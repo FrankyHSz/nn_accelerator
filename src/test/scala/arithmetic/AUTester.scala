@@ -17,11 +17,13 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
   // Testing without clear
   // ---------------------
-  // Feeding them into the Arithmetic Unit
-  // and expecting accumulated values after
+  println("[AUTester] Testing without clear")
+  // Feeding random values into the Arithmetic
+  // Unit and expecting accumulated values after
   // 3 cycles of delay
   var accu = 0
-  poke(dut.io.clear, false.B)
+  poke(dut.io.clr, false.B)
+  poke(dut.io.en, true.B)
   for (i <- 0 until 1024+3) {
 
     // Providing new input values
@@ -43,10 +45,13 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
   // Testing with clear
   // ------------------
-  // Feeding them into the Arithmetic Unit
-  // and expecting accumulated values after
+  println("[AUTester] Testing with clear")
+  // Feeding random values into the Arithmetic
+  // Unit and expecting accumulated values after
   // 3 cycles of delay
+  // Accumulator is cleared after every 128th input
   accu = 0
+  poke(dut.io.en, true.B)
   for (i <- 0 until 1024+3) {
 
     // Providing new input values
@@ -57,9 +62,9 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
     // Clearing after every 128 inputs
     if (i % 128 == 0) {
-      poke(dut.io.clear, true.B)
+      poke(dut.io.clr, true.B)
     } else {
-      poke(dut.io.clear, false.B)
+      poke(dut.io.clr, false.B)
     }
 
     // Testing the output
@@ -67,6 +72,50 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
     if (i >= 3) {
       if ((i-3) % 128 == 0) accu = inputsA(i-3) * inputsB(i-3)
       else                  accu = accu + inputsA(i-3) * inputsB(i-3)
+      expect(dut.io.mac, accu)
+    }
+
+    // Stepping forward one clock cycle
+    step(1)
+  }
+
+  // Testing with enable
+  // -------------------
+  println("[AUTester] Testing with enable")
+  // Feeding random values into the Arithmetic
+  // Unit and expecting accumulated values after
+  // 3 cycles of delay
+  // Accumulator's enable is toggled after every
+  // 128th input
+  accu = 0
+  var enable = false
+  for (i <- 0 until 1024+3) {
+
+    // Providing new input values
+    if (i < 1024) {
+      poke(dut.io.a, inputsA(i).U)
+      poke(dut.io.b, inputsB(i).U)
+    }
+
+    // Clearing content of accumulator only at first cycle
+    if (i == 0) {
+      poke(dut.io.clr, true.B)
+    } else {
+      poke(dut.io.clr, false.B)
+    }
+
+    // Toggling enable after every 128 inputs
+    if (i % 128 == 0) {
+      enable = !enable
+      poke(dut.io.en, enable)
+    }
+
+    // Testing the output
+    // The output has a pipeline delay of 3 clock cycles
+    if (i >= 3) {
+      if ((i-3) == 0)          accu = inputsA(0) * inputsB(0)
+      else if ((i-3)/128 % 2 == 0) accu = accu + inputsA(i-3) * inputsB(i-3)
+      // else : Accumulator is not enabled so it holds its value
       expect(dut.io.mac, accu)
     }
 
