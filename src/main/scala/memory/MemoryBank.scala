@@ -5,17 +5,22 @@ import scala.math.pow
 
 class MemoryBank(addrW : Int, dataW : Int) extends Module {
   val io = IO(new Bundle() {
-    val addr = Input(UInt(addrW.W))
+
+    // Write port for DMA
+    val wrAddr = Input(UInt(addrW.W))
     val wrData = Input(UInt(dataW.W))
+    val wrEn = Input(Bool())
+
+    // Read port for Arithmetic Grid
+    val rdAddr = Input(UInt(addrW.W))
     val rdData = Output(UInt(dataW.W))
-    val RdWrN = Input(Bool())
   })
 
-  val memory = Reg(Vec(pow(2, addrW).toInt, UInt(dataW.W)))
+  val memory = Reg(Vec((1 << addrW), UInt(dataW.W)))
 
-  io.rdData := memory(io.addr)
-  when (io.RdWrN === false.B) {
-    memory(io.addr) := io.wrData
+  io.rdData := memory(io.rdAddr)
+  when (io.wrEn) {
+    memory(io.wrAddr) := io.wrData
   }
 
   // Helper functions for testing
