@@ -12,4 +12,10 @@ object MemoryTesterMain extends App {
       c => new MemoryBankTester(c)
     }
   }
+
+  if (testAll || args(0) == "testLocalMem") {
+    iotesters.Driver.execute(args, () => new LocalMemory(addrW = 16, bankAddrW = 8, dataW = 8)) {
+      c => new LocalMemoryTester(c)
+    }
+  }
 }
