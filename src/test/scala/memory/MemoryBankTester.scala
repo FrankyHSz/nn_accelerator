@@ -12,6 +12,8 @@ class MemoryBankTester(dut: MemoryBank) extends PeekPokeTester(dut) {
     poke(dut.io.wrAddr, i.U)
     poke(dut.io.wrData, i.U)
     poke(dut.io.wrEn, true.B)
+    step(1)
+    poke(dut.io.wrEn, false.B)
 
     poke(dut.io.rdAddr, i.U)
     step(1)

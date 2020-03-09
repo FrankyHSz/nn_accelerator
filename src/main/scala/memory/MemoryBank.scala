@@ -18,7 +18,7 @@ class MemoryBank(addrW : Int, dataW : Int) extends Module {
 
   val memory = Reg(Vec((1 << addrW), UInt(dataW.W)))
 
-  io.rdData := memory(io.rdAddr)
+  io.rdData := RegNext(memory(io.rdAddr))
   when (io.wrEn) {
     memory(io.wrAddr) := io.wrData
   }

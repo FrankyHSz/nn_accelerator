@@ -28,7 +28,9 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
       poke(dut.io.wrEn, true.B)
       step(1)
 
+      poke(dut.io.wrEn, false.B)
       poke(dut.io.rdAddr, ((randomBaseAddress + i) % maxAddress).U)
+      step(1)
       expect(dut.io.rdData, (randomBaseAddress + i) % maxData)
 
       // A sloppy progressbar
@@ -56,7 +58,9 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
 
       // Read address = i * nBanks + offset
       // should be the same as write address = {i, bankIdx}
+      poke(dut.io.wrEn, false.B)
       poke(dut.io.rdAddr, ((randomBankIndex + i * numberOfBanks) % maxAddress).U)
+      step(1)
       expect(dut.io.rdData, i.U)
 
       // A sloppy progressbar
