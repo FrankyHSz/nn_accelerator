@@ -1,3 +1,16 @@
-*/*
-!src/*
-!doc/*
+# Generated folders and files (Chisel)
+target/
+project/
+test_run_dir/
+
+# Generated files (LaTeX)
+doc/*.aux
+doc/*.toc
+doc/*.pdf
+doc/*.log
+doc/*.gz
+doc/*.blg
+doc/*.bbl
+
+# Images
+doc/img/*.png
