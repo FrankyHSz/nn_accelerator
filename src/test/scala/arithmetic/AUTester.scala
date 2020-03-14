@@ -6,12 +6,12 @@ import scala.util.Random
 
 class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
-  // Creating 1024 random 8-bit values
+  // Creating 1024 random values
   var inputsA = new Array[Int](1024)
   var inputsB = new Array[Int](1024)
   for (i <- 0 until 1023) {
-    inputsA(i) = Random.nextInt(256)
-    inputsB(i) = Random.nextInt(256)
+    inputsA(i) = Random.nextInt(1 << dut.getInputW)
+    inputsB(i) = Random.nextInt(1 << dut.getInputW)
   }
 
 

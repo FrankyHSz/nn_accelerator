@@ -8,7 +8,7 @@ object ArithmeticTesterMain extends App {
   if (args.length == 0 || args(0) == "testAll") testAll = true
 
   if (testAll || args(0) == "testAU") {
-    iotesters.Driver.execute(args, () => new ArithmeticUnit) {
+    iotesters.Driver.execute(args, () => new ArithmeticUnit(inputW = 8, accuW = 32)) {
       c => new AUTester(c)
     }
   }

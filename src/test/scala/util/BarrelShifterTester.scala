@@ -14,7 +14,7 @@ class BarrelShifterTester[T <: Data](dut: BarrelShifter[T]) extends PeekPokeTest
 
     // Generating random inputs
     val input = Array.ofDim[UInt](n)
-    for (i <- 0 until n) input(i) = Random.nextInt((1 << w) - 1).U(w.W)
+    for (i <- 0 until n) input(i) = Random.nextInt(1 << w).U(w.W)
 
     // "Connecting" the random inputs to the DUT
     for (i <- 0 until n) poke(dut.io.in(i).asUInt(), input(i))
