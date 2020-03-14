@@ -18,4 +18,10 @@ object MemoryTesterMain extends App {
       c => new LocalMemoryTester(c)
     }
   }
+
+  if (testAll || args(0) == "testLoadUnit") {
+    iotesters.Driver.execute(args, () => new LoadUnit(addrW = 8)) {
+      c => new LoadUnitTester(c)
+    }
+  }
 }
