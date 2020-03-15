@@ -41,4 +41,5 @@ class ArithmeticUnit(inputW: Int, accuW: Int) extends Module {
 
   def getInputW = inputW
   def getAccuW = accuW
+  def getDelay = 3
 }
