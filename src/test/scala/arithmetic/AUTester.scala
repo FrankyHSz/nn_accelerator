@@ -18,13 +18,12 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
   // Testing without clear
   // ---------------------
   println("[AUTester] Testing without clear")
-  // Feeding random values into the Arithmetic
-  // Unit and expecting accumulated values after
-  // 3 cycles of delay
+  // Feeding random values into the Arithmetic Unit and
+  // expecting accumulated values after pipeline delay
   var accu = 0
   poke(dut.io.clr, false.B)
   poke(dut.io.en, true.B)
-  for (i <- 0 until 1024+3) {
+  for (i <- 0 until 1024+dut.getDelay) {
 
     // Providing new input values
     if (i < 1024) {
@@ -34,9 +33,9 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
     // Testing the output
     // The output has a pipeline delay of 3 clock cycles
-    if (i >= 3) {
-      expect(dut.io.mac, accu + inputsA(i-3) * inputsB(i-3))
-      accu += inputsA(i-3) * inputsB(i-3)
+    if (i >= dut.getDelay) {
+      expect(dut.io.mac, accu + inputsA(i-dut.getDelay) * inputsB(i-dut.getDelay))
+      accu += inputsA(i-dut.getDelay) * inputsB(i-dut.getDelay)
     }
 
     // Stepping forward one clock cycle
@@ -46,13 +45,12 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
   // Testing with clear
   // ------------------
   println("[AUTester] Testing with clear")
-  // Feeding random values into the Arithmetic
-  // Unit and expecting accumulated values after
-  // 3 cycles of delay
+  // Feeding random values into the Arithmetic Unit and
+  // expecting accumulated values after pipeline delay
   // Accumulator is cleared after every 128th input
   accu = 0
   poke(dut.io.en, true.B)
-  for (i <- 0 until 1024+3) {
+  for (i <- 0 until 1024+dut.getDelay) {
 
     // Providing new input values
     if (i < 1024) {
@@ -69,9 +67,9 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
     // Testing the output
     // The output has a pipeline delay of 3 clock cycles
-    if (i >= 3) {
-      if ((i-3) % 128 == 0) accu = inputsA(i-3) * inputsB(i-3)
-      else                  accu = accu + inputsA(i-3) * inputsB(i-3)
+    if (i >= dut.getDelay) {
+      if ((i-3) % 128 == 0) accu = inputsA(i-dut.getDelay) * inputsB(i-dut.getDelay)
+      else                  accu = accu + inputsA(i-dut.getDelay) * inputsB(i-dut.getDelay)
       expect(dut.io.mac, accu)
     }
 
@@ -89,7 +87,7 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
   // 128th input
   accu = 0
   var enable = false
-  for (i <- 0 until 1024+3) {
+  for (i <- 0 until 1024+dut.getDelay) {
 
     // Providing new input values
     if (i < 1024) {
@@ -111,10 +109,11 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
     }
 
     // Testing the output
-    // The output has a pipeline delay of 3 clock cycles
-    if (i >= 3) {
-      if ((i-3) == 0)          accu = inputsA(0) * inputsB(0)
-      else if ((i-3)/128 % 2 == 0) accu = accu + inputsA(i-3) * inputsB(i-3)
+    if (i >= dut.getDelay) {
+      if ((i-dut.getDelay) == 0)
+        accu = inputsA(0) * inputsB(0)
+      else if ((i-dut.getDelay)/128 % 2 == 0)
+        accu = accu + inputsA(i-dut.getDelay) * inputsB(i-dut.getDelay)
       // else : Accumulator is not enabled so it holds its value
       expect(dut.io.mac, accu)
     }
