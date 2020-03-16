@@ -2,7 +2,7 @@ package memory
 
 import chisel3._
 
-class LoadUnit(addrW: Int) extends Module {
+class LoadUnit(addrW: Int, n: Int) extends Module {
   val io = IO(new Bundle() {
 
     // Control interface
@@ -21,8 +21,8 @@ class LoadUnit(addrW: Int) extends Module {
   val addrAReg = RegInit(0.U(addrW.W))
   val addrBReg = RegInit(0.U(addrW.W))
   when (io.en) {
-    addrAReg := addrAReg + 1.U
-    addrBReg := addrBReg + 1.U
+    addrAReg := addrAReg + n.U
+    addrBReg := addrBReg + n.U
   } .otherwise {
     addrAReg := 0.U
     addrAReg := 0.U
@@ -34,4 +34,5 @@ class LoadUnit(addrW: Int) extends Module {
   io.auClr := RegNext(io.en && (addrAReg === 0.U))  // Clearing AU accumulators after wrap-around
 
   def getAddrW = addrW
+  def getN = n
 }

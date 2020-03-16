@@ -20,7 +20,7 @@ object MemoryTesterMain extends App {
   }
 
   if (testAll || args(0) == "testLoadUnit") {
-    iotesters.Driver.execute(args, () => new LoadUnit(addrW = 8)) {
+    iotesters.Driver.execute(args, () => new LoadUnit(addrW = 8, n = 4)) {
       c => new LoadUnitTester(c)
     }
   }

@@ -1,4 +1,5 @@
 # Generated folders and files (Chisel)
+.idea/
 target/
 project/
 test_run_dir/

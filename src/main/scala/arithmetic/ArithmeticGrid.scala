@@ -5,7 +5,7 @@ import chisel3._
 class ArithmeticGrid(n: Int, inW: Int) extends Module {
 
   // Internal parameters and useful constants
-  val accuExt = 16
+  val accuExt = ArithmeticGrid.getAccuExt
   val outW = 2 * inW + accuExt
 
   val io = IO(new Bundle() {
@@ -34,4 +34,8 @@ class ArithmeticGrid(n: Int, inW: Int) extends Module {
   def getN = n
   def getInputW = inW
   def getDelay = ArithmeticUnit.getDelay
+}
+
+object ArithmeticGrid {
+  def getAccuExt = 16
 }
