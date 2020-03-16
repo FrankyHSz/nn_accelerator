@@ -12,4 +12,10 @@ object ArithmeticTesterMain extends App {
       c => new AUTester(c)
     }
   }
+
+  if (testAll || args(0) == "testAG") {
+    iotesters.Driver.execute(args, () => new ArithmeticGrid(n = 256, inW = 8)) {
+      c => new AGTester(c)
+    }
+  }
 }
