@@ -6,12 +6,15 @@ import scala.util.Random
 
 class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
+  // Test constants
+  val range = 1 << dut.getInputW
+
   // Creating 1024 random values
   var inputsA = new Array[Int](1024)
   var inputsB = new Array[Int](1024)
-  for (i <- 0 until 1023) {
-    inputsA(i) = Random.nextInt(1 << dut.getInputW)
-    inputsB(i) = Random.nextInt(1 << dut.getInputW)
+  for (i <- 0 until 1024) {
+    inputsA(i) = Random.nextInt(range) - range/2
+    inputsB(i) = Random.nextInt(range) - range/2
   }
 
 
@@ -27,8 +30,8 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
     // Providing new input values
     if (i < 1024) {
-      poke(dut.io.a, inputsA(i).U)
-      poke(dut.io.b, inputsB(i).U)
+      poke(dut.io.a, inputsA(i).S)
+      poke(dut.io.b, inputsB(i).S)
     }
 
     // Testing the output
@@ -54,8 +57,8 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
     // Providing new input values
     if (i < 1024) {
-      poke(dut.io.a, inputsA(i).U)
-      poke(dut.io.b, inputsB(i).U)
+      poke(dut.io.a, inputsA(i).S)
+      poke(dut.io.b, inputsB(i).S)
     }
 
     // Clearing after every 128 inputs
@@ -91,8 +94,8 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
     // Providing new input values
     if (i < 1024) {
-      poke(dut.io.a, inputsA(i).U)
-      poke(dut.io.b, inputsB(i).U)
+      poke(dut.io.a, inputsA(i).S)
+      poke(dut.io.b, inputsB(i).S)
     }
 
     // Clearing content of accumulator only at first cycle

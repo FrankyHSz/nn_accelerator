@@ -15,8 +15,8 @@ class ToplevelTester(dut: NNAccelerator) extends PeekPokeTester(dut) {
 
 
   // Creating random values
-  var memA = Array.fill(memoryDepth){ Random.nextInt(maxData) }
-  var memB = Array.fill(memoryDepth){ Random.nextInt(maxData) }
+  var memA = Array.fill(memoryDepth){ Random.nextInt(maxData) - maxData/2 }
+  var memB = Array.fill(memoryDepth){ Random.nextInt(maxData) - maxData/2 }
 
   // Initializing memories
   println("Initializing local memories...")
@@ -27,8 +27,8 @@ class ToplevelTester(dut: NNAccelerator) extends PeekPokeTester(dut) {
   for (i <- 0 until memoryDepth) {
     poke(dut.io.wrAddr(0), i.U)
     poke(dut.io.wrAddr(1), i.U)
-    poke(dut.io.wrData(0), memA(i).U)
-    poke(dut.io.wrData(1), memB(i).U)
+    poke(dut.io.wrData(0), memA(i).S)
+    poke(dut.io.wrData(1), memB(i).S)
     step(1)
 
     // A sloppy progressbar

@@ -31,7 +31,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
       println("Writing...")
       for (i <- 0 until burst_len + numberOfBanks - 1) {
         poke(dut.io.wrAddr, ((randomBaseAddress + i) % maxAddress).U)
-        poke(dut.io.wrData, ((randomBaseAddress + i) % maxData).U)
+        poke(dut.io.wrData, ((randomBaseAddress + i) % maxData/2).S)
         poke(dut.io.wrEn, true.B)
         step(1)
 
@@ -48,7 +48,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
         step(1)
 
         for (outIdx <- 0 until numberOfBanks)
-          expect(dut.io.rdData(outIdx), (randomBaseAddress + i + outIdx) % maxData)
+          expect(dut.io.rdData(outIdx), (randomBaseAddress + i + outIdx) % maxData/2)
 
         // A sloppy progressbar
         if (i % tenPercent == 0) print("|")

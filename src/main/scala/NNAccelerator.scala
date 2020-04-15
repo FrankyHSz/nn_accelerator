@@ -27,10 +27,10 @@ class NNAccelerator extends Module {
 
     // Test interface
     val wrAddr = Input(Vec(2, UInt(addrW.W)))
-    val wrData = Input(Vec(2, UInt(dataW.W)))
+    val wrData = Input(Vec(2, SInt(dataW.W)))
     val wrEn   = Input(Vec(2, Bool()))
     val ldEn   = Input(Bool())
-    val mac    = Output(Vec(n, UInt(accuW.W)))
+    val mac    = Output(Vec(n, SInt(accuW.W)))
   })
 
   // Submodules

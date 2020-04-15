@@ -14,8 +14,8 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
   val onePercent = testLength / 100 // For a sloppy progressbar
 
   // Creating testLength random vectors with size of numberOfUnits
-  val inputsA = Array.fill(numberOfUnits * testLength) { Random.nextInt(maxInputNumber) }
-  val inputsB = Array.fill(numberOfUnits * testLength) { Random.nextInt(maxInputNumber) }
+  val inputsA = Array.fill(numberOfUnits * testLength) { Random.nextInt(maxInputNumber) - maxInputNumber/2 }
+  val inputsB = Array.fill(numberOfUnits * testLength) { Random.nextInt(maxInputNumber) - maxInputNumber/2 }
 
   // Testing without clear
   // ---------------------
@@ -37,8 +37,8 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
       // Providing new input values
       if (t < testLength) {
         // println("Inputs for " + k + ": " + inputsA(currentInputIdx) + ", " + inputsB(currentInputIdx))
-        poke(dut.io.opA(k), inputsA(currentInputIdx).U)
-        poke(dut.io.opB(k), inputsB(currentInputIdx).U)
+        poke(dut.io.opA(k), inputsA(currentInputIdx).S)
+        poke(dut.io.opB(k), inputsB(currentInputIdx).S)
       }
 
       // Testing the output
@@ -84,8 +84,8 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
 
       // Providing new input values
       if (t < testLength) {
-        poke(dut.io.opA(k), inputsA(currentInputIdx).U)
-        poke(dut.io.opB(k), inputsB(currentInputIdx).U)
+        poke(dut.io.opA(k), inputsA(currentInputIdx).S)
+        poke(dut.io.opB(k), inputsB(currentInputIdx).S)
       }
 
       // Testing the output
@@ -138,8 +138,8 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
 
       // Providing new input values
       if (t < testLength) {
-        poke(dut.io.opA(k), inputsA(currentInputIdx).U)
-        poke(dut.io.opB(k), inputsB(currentInputIdx).U)
+        poke(dut.io.opA(k), inputsA(currentInputIdx).S)
+        poke(dut.io.opB(k), inputsB(currentInputIdx).S)
       }
 
       // Testing the output

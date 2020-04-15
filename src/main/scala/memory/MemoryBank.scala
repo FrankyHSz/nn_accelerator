@@ -8,15 +8,15 @@ class MemoryBank(addrW : Int, dataW : Int) extends Module {
 
     // Write port for DMA
     val wrAddr = Input(UInt(addrW.W))
-    val wrData = Input(UInt(dataW.W))
+    val wrData = Input(SInt(dataW.W))
     val wrEn = Input(Bool())
 
     // Read port for Arithmetic Grid
     val rdAddr = Input(UInt(addrW.W))
-    val rdData = Output(UInt(dataW.W))
+    val rdData = Output(SInt(dataW.W))
   })
 
-  val memory = Reg(Vec((1 << addrW), UInt(dataW.W)))
+  val memory = Reg(Vec((1 << addrW), SInt(dataW.W)))
 
   io.rdData := RegNext(memory(io.rdAddr))
   when (io.wrEn) {

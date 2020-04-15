@@ -11,12 +11,12 @@ class LocalMemory(addrW: Int, bankAddrW: Int, dataW: Int) extends Module {
 
     // DMA interface
     val wrAddr = Input(UInt(addrW.W))
-    val wrData = Input(UInt(dataW.W))
+    val wrData = Input(SInt(dataW.W))
     val wrEn   = Input(Bool())
 
     // Arithmetic Grid interface
     val rdAddr = Input(UInt(addrW.W))
-    val rdData = Output(Vec(numberOfBanks, UInt(dataW.W)))
+    val rdData = Output(Vec(numberOfBanks, SInt(dataW.W)))
   })
 
   // Generating memory banks
@@ -25,7 +25,7 @@ class LocalMemory(addrW: Int, bankAddrW: Int, dataW: Int) extends Module {
   })
 
   // Generating barrel shifter to connect banks to output ports
-  val outputConnect = Module(new BarrelShifter(numberOfBanks, UInt(dataW.W), pipelined = false))
+  val outputConnect = Module(new BarrelShifter(numberOfBanks, SInt(dataW.W), pipelined = false))
 
   // Connecting memory banks
   // Banks are addressed with the upper half of read/write address,

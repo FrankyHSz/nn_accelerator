@@ -9,11 +9,11 @@ class ArithmeticGrid(n: Int, inW: Int) extends Module {
   val outW = 2 * inW + accuExt
 
   val io = IO(new Bundle() {
-    val opA = Input(Vec(n, UInt(inW.W)))
-    val opB = Input(Vec(n, UInt(inW.W)))
+    val opA = Input(Vec(n, SInt(inW.W)))
+    val opB = Input(Vec(n, SInt(inW.W)))
     val en  = Input(Bool())
     val clr = Input(Bool())
-    val mac = Output(Vec(n, UInt(outW.W)))
+    val mac = Output(Vec(n, SInt(outW.W)))
   })
 
   // Generating arithmetic units
