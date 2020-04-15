@@ -18,4 +18,16 @@ object ArithmeticTesterMain extends App {
       c => new AGTester(c)
     }
   }
+
+  if (testAll || args(0) == "testSigmoid") {
+    iotesters.Driver.execute(args, () => new Sigmoid(inW = 32, outW = 8)) {
+      c => new SigmoidTester(c)
+    }
+  }
+
+  if (testAll || args(0) == "testActivationUnit") {
+    iotesters.Driver.execute(args, () => new ActivationUnit(inW = 32, outW = 8)) {
+      c => new ActivationUnitTester(c)
+    }
+  }
 }
