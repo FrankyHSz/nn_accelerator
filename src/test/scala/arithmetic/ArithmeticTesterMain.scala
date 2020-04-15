@@ -30,4 +30,10 @@ object ArithmeticTesterMain extends App {
       c => new ActivationUnitTester(c)
     }
   }
+
+  if (testAll || args(0) == "testActivationGrid") {
+    iotesters.Driver.execute(args, () => new ActivationGrid(n = 16, inW = 32, outW = 8)) {
+      c => new ActivationGridTester(c)
+    }
+  }
 }
