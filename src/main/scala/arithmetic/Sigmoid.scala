@@ -11,13 +11,13 @@ class Sigmoid(inW: Int, outW: Int) extends Module {
 
   // Input number is expected to have n integer bits and m fractional bits,
   // while output number is expected to have 1 integer bit and m fractional bits.
-  // Because sigmoid is saturated if (in < -6) or (in > +6), only numbers with at
-  // max. 3+1 useful integer bits are considered.
-  val range = 1 << (3 + outW)  // n = 4, m = outW-1
+  // Because sigmoid is approximately saturated if (in < -4) or (in > +4), only
+  // numbers with at max. 2+1 useful integer bits are considered.
+  val range = 1 << (2 + outW)  // n = 3, m = outW-1
   val scale = 1 << (outW - 1)  // scaling with 2^m
-  val msb   = (3 + outW) - 1   // MSB index of "4.m"-format fixed point numbers
+  val msb   = (2 + outW) - 1   // MSB index of "3.m"-format fixed point numbers
 
-  // Creating the sigmoid table between -8 and +8
+  // Creating the sigmoid table between -4 and +4
   val array = new Array[Int](range)
   for (i <- 0 until range) {
 
@@ -75,5 +75,5 @@ object Sigmoid {
   }
 
   def getDelay = 1
-  def getRange = 16  // -8 to 8
+  def getRange = 8  // -4 to +4
 }
