@@ -24,4 +24,12 @@ object MemoryTesterMain extends App {
       c => new LoadUnitTester(c)
     }
   }
+
+  if (testAll || args(0) == "testDMA") {
+    iotesters.Driver.execute(args, () => new DMA(busAddrW = 32, busDataW = 32,
+                                                 localAddrW = 16, localDataW = 8,
+                                                 channels = 4)) {
+      c => new DMATester(c)
+    }
+  }
 }
