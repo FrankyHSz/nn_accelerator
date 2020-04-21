@@ -1,31 +1,32 @@
 package memory
 
 import chisel3._
+import _root_.arithmetic.baseType
 import _root_.util.BarrelShifter
 
-class LocalMemory(addrW: Int, bankAddrW: Int, dataW: Int) extends Module {
+class LocalMemory extends Module {
 
-  val numberOfBanks = 1 << bankAddrW
+  val numberOfBanks = 1 << bankAddrWidth
 
   val io = IO(new Bundle() {
 
     // DMA interface
-    val wrAddr = Input(UInt(addrW.W))
-    val wrData = Input(SInt(dataW.W))
+    val wrAddr = Input(UInt(localAddrWidth.W))
+    val wrData = Input(baseType)
     val wrEn   = Input(Bool())
 
     // Arithmetic Grid interface
-    val rdAddr = Input(UInt(addrW.W))
-    val rdData = Output(Vec(numberOfBanks, SInt(dataW.W)))
+    val rdAddr = Input(UInt(localAddrWidth.W))
+    val rdData = Output(Vec(numberOfBanks, baseType))
   })
 
   // Generating memory banks
   val memBanks = VecInit(Seq.fill(numberOfBanks) {
-    Module(new MemoryBank(addrW = (addrW - bankAddrW), dataW = dataW)).io
+    Module(new MemoryBank).io
   })
 
   // Generating barrel shifter to connect banks to output ports
-  val outputConnect = Module(new BarrelShifter(numberOfBanks, SInt(dataW.W), pipelined = false))
+  val outputConnect = Module(new BarrelShifter(numberOfBanks, baseType, pipelined = false))
 
   // Connecting memory banks
   // Banks are addressed with the upper half of read/write address,
@@ -35,39 +36,39 @@ class LocalMemory(addrW: Int, bankAddrW: Int, dataW: Int) extends Module {
   for (i <- 0 until numberOfBanks) {
 
     // Connecting DMA interface
-    memBanks(i).wrAddr := io.wrAddr(addrW - 1, bankAddrW)
+    memBanks(i).wrAddr := io.wrAddr(localAddrWidth - 1, bankAddrWidth)
     memBanks(i).wrData := io.wrData
-    if (bankAddrW == 0)
+    if (bankAddrWidth == 0)
       memBanks(0).wrEn   := io.wrEn
     else
-      memBanks(i).wrEn   := (io.wrAddr(bankAddrW - 1, 0) === i.U) && io.wrEn
+      memBanks(i).wrEn   := (io.wrAddr(bankAddrWidth - 1, 0) === i.U) && io.wrEn
 
     // Connecting Arithmetic Grid interface
     // - Hardware support for unaligned read
-    if (bankAddrW == 0)
+    if (bankAddrWidth == 0)
       memBanks(0).rdAddr := io.rdAddr
     else
       memBanks(i).rdAddr := Mux(
-        io.rdAddr(bankAddrW - 1, 0) > i.U,      // If the offset is greater than index of this bank
-        io.rdAddr(addrW - 1, bankAddrW) + 1.U,  // then this banks should provide value from next row
-        io.rdAddr(addrW - 1, bankAddrW)         // otherwise it provide data as requested
+        io.rdAddr(bankAddrWidth - 1, 0) > i.U,      // If the offset is greater than index of this bank
+        io.rdAddr(localAddrWidth - 1, bankAddrWidth) + 1.U,  // then this banks should provide value from next row
+        io.rdAddr(localAddrWidth - 1, bankAddrWidth)         // otherwise it provide data as requested
       )
     // - Connecting output of memory banks to barrel shifter
-    if (bankAddrW != 0) outputConnect.io.in(i) := memBanks(i).rdData
+    if (bankAddrWidth != 0) outputConnect.io.in(i) := memBanks(i).rdData
   }
 
-  if (bankAddrW == 0) {
+  if (bankAddrWidth == 0) {
     io.rdData(0) := memBanks(0).rdData
     // Unused interconnect
     outputConnect.io.in(0) := 0.U
     outputConnect.io.sh    := 0.U
   } else {
     // Connecting barrel shifter to module output
-    outputConnect.io.sh := io.rdAddr(bankAddrW - 1, 0)
+    outputConnect.io.sh := io.rdAddr(bankAddrWidth - 1, 0)
     io.rdData := outputConnect.io.out
   }
 
-  def getAddrW = addrW
-  def getBankAddrW = bankAddrW
-  def getDataW = dataW
+  def getAddrW = localAddrWidth
+  def getBankAddrW = bankAddrWidth
+  def getDataW = baseType.getWidth
 }

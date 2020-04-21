@@ -1,22 +1,22 @@
 package memory
 
 import chisel3._
-import scala.math.pow
+import _root_.arithmetic.baseType
 
-class MemoryBank(addrW : Int, dataW : Int) extends Module {
+class MemoryBank extends Module {
   val io = IO(new Bundle() {
 
     // Write port for DMA
-    val wrAddr = Input(UInt(addrW.W))
-    val wrData = Input(SInt(dataW.W))
+    val wrAddr = Input(UInt(bankAddrWidth.W))
+    val wrData = Input(baseType)
     val wrEn = Input(Bool())
 
     // Read port for Arithmetic Grid
-    val rdAddr = Input(UInt(addrW.W))
-    val rdData = Output(SInt(dataW.W))
+    val rdAddr = Input(UInt(bankAddrWidth.W))
+    val rdData = Output(baseType)
   })
 
-  val memory = Reg(Vec((1 << addrW), SInt(dataW.W)))
+  val memory = Reg(Vec((1 << bankAddrWidth), baseType))
 
   io.rdData := RegNext(memory(io.rdAddr))
   when (io.wrEn) {
@@ -24,6 +24,6 @@ class MemoryBank(addrW : Int, dataW : Int) extends Module {
   }
 
   // Helper functions for testing
-  def getAddrW = addrW
-  def getDataW = dataW
+  def getAddrW = bankAddrWidth
+  def getDataW = baseType.getWidth
 }

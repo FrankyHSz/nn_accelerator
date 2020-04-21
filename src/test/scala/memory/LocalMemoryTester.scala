@@ -11,10 +11,10 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
   val maxAddressSingleBank = 1 << addressWidthOfASingleBank
   val numberOfBanks = 1 << dut.getBankAddrW
   val maxAddress = 1 << dut.getAddrW
-  val maxData = 1 << dut.getDataW
+  val maxData = 1 << (dut.getDataW-1)
 
   // Tests to run
-  val burst_test = false
+  val burst_test = true
   val bank_test  = true
 
   if (burst_test) {
@@ -31,7 +31,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
       println("Writing...")
       for (i <- 0 until burst_len + numberOfBanks - 1) {
         poke(dut.io.wrAddr, ((randomBaseAddress + i) % maxAddress).U)
-        poke(dut.io.wrData, ((randomBaseAddress + i) % maxData/2).S)
+        poke(dut.io.wrData, ((randomBaseAddress + i) % maxData).S)
         poke(dut.io.wrEn, true.B)
         step(1)
 
@@ -48,7 +48,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
         step(1)
 
         for (outIdx <- 0 until numberOfBanks)
-          expect(dut.io.rdData(outIdx), (randomBaseAddress + i + outIdx) % maxData/2)
+          expect(dut.io.rdData(outIdx), (randomBaseAddress + i + outIdx) % maxData)
 
         // A sloppy progressbar
         if (i % tenPercent == 0) print("|")
@@ -71,7 +71,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
         // Write address = {i, bankIdx}
         val catAddress = (i << dut.getBankAddrW) + randomBankIndex
         poke(dut.io.wrAddr, catAddress.U)
-        poke(dut.io.wrData, i.U)
+        poke(dut.io.wrData, (i - maxAddressSingleBank/2).S)
         poke(dut.io.wrEn, true.B)
         step(1)
 
@@ -80,7 +80,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
         poke(dut.io.wrEn, false.B)
         poke(dut.io.rdAddr, ((randomBankIndex + i * numberOfBanks) % maxAddress).U)
         step(1)
-        expect(dut.io.rdData(0), i.U)
+        expect(dut.io.rdData(0), (i - maxAddressSingleBank/2))
 
         // A sloppy progressbar
         if (i % tenPercentBank == 0) print("|")

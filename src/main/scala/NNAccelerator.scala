@@ -1,23 +1,9 @@
 
 import chisel3._
-import chisel3.util.log2Up
 import arithmetic._
 import memory._
 
 class NNAccelerator extends Module {
-
-  // Internal parameters and useful constants
-  val n = 32      // Final NNA will have 256
-  val addrW = 12  // Final NNA will have 16 bits (64 kB)
-  val bankAddrW = log2Up(n)
-  val dataW = 8
-  val accuW = 2 * dataW + accuExt
-
-  def getN = n
-  def getAddrW = addrW
-  def getBankAddrW = bankAddrW
-  def getDataW = dataW
-
   val io = IO(new Bundle() {
     // OCPcore slave interface for the processor
     // ...
@@ -26,17 +12,17 @@ class NNAccelerator extends Module {
     // ...
 
     // Test interface
-    val wrAddr = Input(Vec(2, UInt(addrW.W)))
-    val wrData = Input(Vec(2, SInt(dataW.W)))
+    val wrAddr = Input(Vec(2, UInt(localAddrWidth.W)))
+    val wrData = Input(Vec(2, baseType))
     val wrEn   = Input(Vec(2, Bool()))
     val ldEn   = Input(Bool())
-    val mac    = Output(Vec(n, SInt(accuW.W)))
+    val mac    = Output(Vec(gridSize, accuType))
   })
 
   // Submodules
-  val localMemoryA = Module(new LocalMemory(addrW = addrW, bankAddrW = bankAddrW, dataW = dataW))
-  val localMemoryB = Module(new LocalMemory(addrW = addrW, bankAddrW = bankAddrW, dataW = dataW))
-  val loadUnit     = Module(new LoadUnit(addrW = addrW, n = n))
+  val localMemoryA = Module(new LocalMemory)
+  val localMemoryB = Module(new LocalMemory)
+  val loadUnit     = Module(new LoadUnit)
   val computeUnit  = Module(new ArithmeticGrid)
 
   // Connecting memories to external write interface
@@ -62,4 +48,11 @@ class NNAccelerator extends Module {
 
   // Outputting accumulator value for testing
   io.mac := computeUnit.io.mac
+
+
+  // Helper functions
+  def getN = gridSize
+  def getAddrW = localAddrWidth
+  def getBankAddrW = bankAddrWidth
+  def getDataW = baseType.getWidth
 }

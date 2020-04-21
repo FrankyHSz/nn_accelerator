@@ -2,14 +2,15 @@ package memory
 
 import chisel3._
 import chisel3.util.Enum
+import _root_.arithmetic.baseType
 
-class DMA(busAddrW: Int, busDataW: Int, localAddrW: Int, localDataW: Int, channels: Int) extends Module {
+class DMA extends Module {
   val io = IO(new Bundle() {
 
     // DMA <-> Bus Interface
-    val busAddr     = Output(UInt(busAddrW.W))
-    val busBurstLen = Output(UInt(busAddrW.W))
-    val busDataIn   = Input(UInt(busDataW.W))
+    val busAddr     = Output(UInt(busAddrWidth.W))
+    val busBurstLen = Output(UInt(busAddrWidth.W))
+    val busDataIn   = Input(UInt(busDataWidth.W))
     // val busDataOut  = Output(UInt(busDataW.W))
     val busRdWrN    = Output(Bool())
     // Handshake signals: Bus -> DMA (read)
@@ -20,16 +21,16 @@ class DMA(busAddrW: Int, busDataW: Int, localAddrW: Int, localDataW: Int, channe
     // val busReady = Input(Bool())
 
     // DMA <-> Controller
-    val localBaseAddr = Input(UInt(localAddrW.W))
-    val busBaseAddr   = Input(UInt(busAddrW.W))
-    val burstLen      = Input(UInt(localAddrW.W))
+    val localBaseAddr = Input(UInt(localAddrWidth.W))
+    val busBaseAddr   = Input(UInt(busAddrWidth.W))
+    val burstLen      = Input(UInt(localAddrWidth.W))
     val sel   = Input(Bool())
     val start = Input(Bool())
     val done  = Output(Bool())
 
     // DMA <-> Local Memories
-    val wrAddr = Output(Vec(channels, UInt(localAddrW.W)))
-    val wrData = Output(Vec(channels, SInt(localDataW.W)))
+    val wrAddr = Output(Vec(dmaChannels, UInt(localAddrWidth.W)))
+    val wrData = Output(Vec(dmaChannels, baseType))
     val wrEn   = Output(Bool())
     val memSel = Output(Bool())
   })
@@ -38,9 +39,9 @@ class DMA(busAddrW: Int, busDataW: Int, localAddrW: Int, localDataW: Int, channe
   // ---------
 
   // Data registers
-  val localAddrReg   = RegInit(0.U(localAddrW.W))  // Not just container but also an up-counter
-  val busBaseAddrReg = RegInit(0.U(busAddrW.W))
-  val burstLenReg    = RegInit(0.U(localAddrW.W))  // Not just container but also a down-counter
+  val localAddrReg   = RegInit(0.U(localAddrWidth.W))  // Not just container but also an up-counter
+  val busBaseAddrReg = RegInit(0.U(busAddrWidth.W))
+  val burstLenReg    = RegInit(0.U(localAddrWidth.W))  // Not just container but also a down-counter
   val busDataInReg   = RegNext(io.busDataIn)
 
   // Control/handshake registers
@@ -86,14 +87,14 @@ class DMA(busAddrW: Int, busDataW: Int, localAddrW: Int, localDataW: Int, channe
     when (busValidReg) {
       stateReg := read
       burstLenReg := burstLenReg - 1.U
-      localAddrReg := localAddrReg + channels.U
+      localAddrReg := localAddrReg + dmaChannels.U
       io.wrEn := true.B
     }
   }. elsewhen (stateReg === read) {
     when (busValidReg) {
       when (burstLenReg > 1.U) {
         burstLenReg := burstLenReg - 1.U
-        localAddrReg := localAddrReg + channels.U
+        localAddrReg := localAddrReg + dmaChannels.U
         io.wrEn := true.B
       } .otherwise {
         stateReg := init
@@ -119,7 +120,7 @@ class DMA(busAddrW: Int, busDataW: Int, localAddrW: Int, localDataW: Int, channe
 
   // DMA <-> Local Memories
   io.memSel := selReg
-  for (port <- 0 until channels) {
+  for (port <- 0 until dmaChannels) {
 
     // Turning the 32-bit-aligned addressing into byte addresses
     io.wrAddr(port) := localAddrReg + port.U
@@ -132,9 +133,9 @@ class DMA(busAddrW: Int, busDataW: Int, localAddrW: Int, localDataW: Int, channe
 
 
   // Helper functions
-  def getBusAddrW = busAddrW
-  def getBusDataW = busDataW
-  def getLocalAddrW = localAddrW
-  def getLocalDataW = localDataW
-  def getChannels = channels
+  def getBusAddrW = busAddrWidth
+  def getBusDataW = busDataWidth
+  def getLocalAddrW = localAddrWidth
+  def getLocalDataW = baseType.getWidth
+  def getChannels = dmaChannels
 }
