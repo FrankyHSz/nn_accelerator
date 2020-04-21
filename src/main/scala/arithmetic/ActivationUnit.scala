@@ -2,20 +2,20 @@ package arithmetic
 
 import chisel3._
 
-class ActivationUnit(inW: Int, outW: Int) extends Module {
+class ActivationUnit extends Module {
   val io = IO(new Bundle() {
-    val in  = Input(SInt(inW.W))
+    val in  = Input(accuType)
     val sel = Input(Bool())
-    val out = Output(SInt(outW.W))
+    val out = Output(baseType)
   })
 
   // Propagating the selected activation
   io.out := Mux(
     io.sel,
-    ReLU(io.in, outW),
-    Sigmoid(io.in, outW)
+    ReLU(io.in),
+    Sigmoid(io.in)
   )
 
-  def getInW = inW
-  def getOutW = outW
+  def getInW = accuType.getWidth
+  def getOutW = baseType.getWidth
 }

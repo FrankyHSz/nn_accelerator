@@ -2,20 +2,20 @@ package arithmetic
 
 import chisel3._
 
-class ActivationGrid(n: Int, inW: Int, outW: Int) extends Module {
+class ActivationGrid extends Module {
   val io = IO(new Bundle() {
-    val in  = Input(Vec(n, SInt(inW.W)))
+    val in  = Input(Vec(gridSize, accuType))
     val sel = Input(Bool())
-    val out = Output(Vec(n, SInt(outW.W)))
+    val out = Output(Vec(gridSize, baseType))
   })
 
   // Generating activation units
-  val activationUnits = VecInit(Seq.fill(n) {
-    Module(new ActivationUnit(inW = inW, outW = outW)).io
+  val activationUnits = VecInit(Seq.fill(gridSize) {
+    Module(new ActivationUnit).io
   })
 
   // Connecting activation units
-  for (i <- 0 until n) {
+  for (i <- 0 until gridSize) {
     activationUnits(i).in  := io.in(i)
     activationUnits(i).sel := io.sel
     io.out(i) := activationUnits(i).out
@@ -23,6 +23,6 @@ class ActivationGrid(n: Int, inW: Int, outW: Int) extends Module {
 
 
   // Helper functions
-  def getN = n
-  def getOutW = outW
+  def getN = gridSize
+  def getOutW = baseType.getWidth
 }

@@ -8,31 +8,31 @@ object ArithmeticTesterMain extends App {
   if (args.length == 0 || args(0) == "testAll") testAll = true
 
   if (testAll || args(0) == "testAU") {
-    iotesters.Driver.execute(args, () => new ArithmeticUnit(inputW = 8, accuW = 32)) {
+    iotesters.Driver.execute(args, () => new ArithmeticUnit) {
       c => new AUTester(c)
     }
   }
 
   if (testAll || args(0) == "testAG") {
-    iotesters.Driver.execute(args, () => new ArithmeticGrid(n = 256, inW = 8)) {
+    iotesters.Driver.execute(args, () => new ArithmeticGrid) {
       c => new AGTester(c)
     }
   }
 
   if (testAll || args(0) == "testSigmoid") {
-    iotesters.Driver.execute(args, () => new Sigmoid(inW = 32, outW = 8)) {
+    iotesters.Driver.execute(args, () => new Sigmoid) {
       c => new SigmoidTester(c)
     }
   }
 
   if (testAll || args(0) == "testActivationUnit") {
-    iotesters.Driver.execute(args, () => new ActivationUnit(inW = 32, outW = 8)) {
+    iotesters.Driver.execute(args, () => new ActivationUnit) {
       c => new ActivationUnitTester(c)
     }
   }
 
   if (testAll || args(0) == "testActivationGrid") {
-    iotesters.Driver.execute(args, () => new ActivationGrid(n = 16, inW = 32, outW = 8)) {
+    iotesters.Driver.execute(args, () => new ActivationGrid) {
       c => new ActivationGridTester(c)
     }
   }

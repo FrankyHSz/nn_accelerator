@@ -3,19 +3,18 @@ package arithmetic
 import chisel3._
 import scala.math.exp
 
-class Sigmoid(inW: Int, outW: Int) extends Module {
+class Sigmoid extends Module {
   val io = IO(new Bundle() {
-    val in  = Input(SInt(inW.W))
-    val out = Output(SInt(outW.W))
+    val in  = Input(accuType)
+    val out = Output(baseType)
   })
 
   // Input number is expected to have n integer bits and m fractional bits,
   // while output number is expected to have 1 integer bit and m fractional bits.
   // Because sigmoid is approximately saturated if (in < -4) or (in > +4), only
   // numbers with at max. 2+1 useful integer bits are considered.
-  val range = 1 << (2 + outW)  // n = 3, m = outW-1
-  val scale = 1 << (outW - 1)  // scaling with 2^m
-  val msb   = (2 + outW) - 1   // MSB index of "3.m"-format fixed point numbers
+  val range = 1 << (2 + getOutW)  // n = 3, m = outW-1
+  val msb   = (2 + getOutW) - 1   // MSB index of "3.m"-format fixed point numbers
 
   // Creating the sigmoid table between -4 and +4
   val array = new Array[Int](range)
@@ -36,7 +35,7 @@ class Sigmoid(inW: Int, outW: Int) extends Module {
     array(i) = sigmoidFixedPoint
   }
   // The values in table are interpreted as signed fixed point numbers
-  val table = VecInit(array.map(_.S(outW.W)))
+  val table = VecInit(array.map(_.S(getOutW.W)))
 
   // Sigmoid value indexed by lower bits of input
   val sigmoidValue: SInt = RegNext(table(io.in(msb, 0)))
@@ -44,32 +43,32 @@ class Sigmoid(inW: Int, outW: Int) extends Module {
   // Saturation detection
   // - positive overflow: the input is positive and has 1s above msb bit position
   // - negative overflow: the input is negative and has 0s above msb bit position
-  val sign = io.in(inW-1)
-  val upperBits = io.in(inW-2, msb+1)
+  val sign = io.in(getInW-1)
+  val upperBits = io.in(getInW-2, msb+1)
   val posOverflow = !sign && upperBits.orR()
   val negOverflow = sign && !upperBits.andR()
   val saturation  = posOverflow || negOverflow
 
   // Saturation floor and ceiling
-  val maxValue = (1 << (outW-1)) - 1  // 01111...1 = 0.9999
+  val maxValue = (1 << (getOutW-1)) - 1  // 01111...1 = 0.9999
   val minValue = 0                    // 00000...0 = 0.0
 
   // Assigning output
   io.out := Mux(
     saturation,                                                // If saturation is needed
-    Mux(posOverflow, maxValue.S(outW.W), minValue.S(outW.W)),  // then assign ceiling or floor,
+    Mux(posOverflow, maxValue.S(getOutW.W), minValue.S(getOutW.W)),  // then assign ceiling or floor,
     sigmoidValue                                               // otherwise propagate table value
   )
 
-  def getInW = inW
-  def getOutW = outW
+  def getInW = accuType.getWidth
+  def getOutW = baseType.getWidth
   def getDelay = Sigmoid.getDelay
   def getRange = Sigmoid.getRange
 }
 
 object Sigmoid {
-  def apply(in: SInt, outW: Int): SInt = {
-    val module = Module(new Sigmoid(in.getWidth, outW))
+  def apply(in: accuType_t): dataType_t = {
+    val module = Module(new Sigmoid)
     module.io.in := in
     module.io.out
   }

@@ -2,27 +2,22 @@ package arithmetic
 
 import chisel3._
 
-class ArithmeticGrid(n: Int, inW: Int) extends Module {
-
-  // Internal parameters and useful constants
-  val accuExt = ArithmeticGrid.getAccuExt
-  val outW = 2 * inW + accuExt
-
+class ArithmeticGrid extends Module {
   val io = IO(new Bundle() {
-    val opA = Input(Vec(n, SInt(inW.W)))
-    val opB = Input(Vec(n, SInt(inW.W)))
+    val opA = Input(Vec(gridSize, baseType))
+    val opB = Input(Vec(gridSize, baseType))
     val en  = Input(Bool())
     val clr = Input(Bool())
-    val mac = Output(Vec(n, SInt(outW.W)))
+    val mac = Output(Vec(gridSize, accuType))
   })
 
   // Generating arithmetic units
-  val arithmeticUnits = VecInit(Seq.fill(n) {
-    Module(new ArithmeticUnit(inputW = inW, accuW = outW)).io
+  val arithmeticUnits = VecInit(Seq.fill(gridSize) {
+    Module(new ArithmeticUnit).io
   })
 
   // Connecting arithmetic units
-  for (i <- 0 until n) {
+  for (i <- 0 until gridSize) {
     arithmeticUnits(i).a   := io.opA(i)
     arithmeticUnits(i).b   := io.opB(i)
     arithmeticUnits(i).en  := io.en
@@ -31,11 +26,7 @@ class ArithmeticGrid(n: Int, inW: Int) extends Module {
   }
 
   // Helper functions
-  def getN = n
-  def getInputW = inW
+  def getN = gridSize
+  def getInputW = baseType.getWidth
   def getDelay = ArithmeticUnit.getDelay
-}
-
-object ArithmeticGrid {
-  def getAccuExt = 16
 }

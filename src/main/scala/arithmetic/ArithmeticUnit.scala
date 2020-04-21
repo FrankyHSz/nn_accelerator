@@ -2,20 +2,20 @@ package arithmetic
 
 import chisel3._
 
-class ArithmeticUnit(inputW: Int, accuW: Int) extends Module {
+class ArithmeticUnit extends Module {
   val io = IO(new Bundle() {
-    val a   = Input(SInt(inputW.W))
-    val b   = Input(SInt(inputW.W))
+    val a   = Input(baseType)
+    val b   = Input(baseType)
     val en  = Input(Bool())
     val clr = Input(Bool())
-    val mac = Output(SInt(accuW.W))
+    val mac = Output(accuType)
   })
 
   // Registers to hold data
-  val aReg = RegInit(0.S(inputW.W))
-  val bReg = RegInit(0.S(inputW.W))
-  val mul  = RegInit(0.S((2*inputW).W))
-  val accu = RegInit(0.S(accuW.W))
+  val aReg = RegInit(0.S(getInputW.W))
+  val bReg = RegInit(0.S(getInputW.W))
+  val mul  = RegInit(0.S((2*getInputW).W))
+  val accu = RegInit(0.S(getAccuW.W))
 
   // Delay lines for control signals
   val enDelay  = Reg(Vec(2, Bool()))
@@ -39,8 +39,8 @@ class ArithmeticUnit(inputW: Int, accuW: Int) extends Module {
 
   io.mac := accu
 
-  def getInputW = inputW
-  def getAccuW = accuW
+  def getInputW = baseType.getWidth
+  def getAccuW = accuType.getWidth
   def getDelay = ArithmeticUnit.getDelay
 }
 
