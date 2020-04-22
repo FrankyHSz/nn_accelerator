@@ -8,25 +8,29 @@ class DMA extends Module {
   val io = IO(new Bundle() {
 
     // DMA <-> Bus Interface
-    val busAddr     = Output(UInt(busAddrWidth.W))
-    val busBurstLen = Output(UInt(busAddrWidth.W))
-    val busDataIn   = Input(UInt(busDataWidth.W))
-    // val busDataOut  = Output(UInt(busDataW.W))
-    val busRdWrN    = Output(Bool())
-    // Handshake signals: Bus -> DMA (read)
-    val busValid = Input(Bool())
-    val dmaReady = Output(Bool())
-    // Handshake signals: DMA -> Bus (write)
-    // val dmaValid = Output(Bool())
-    // val busReady = Input(Bool())
+    val bus = new Bundle() {
+      val busAddr = Output(UInt(busAddrWidth.W))
+      val busBurstLen = Output(UInt(busAddrWidth.W))
+      val busDataIn = Input(UInt(busDataWidth.W))
+      // val busDataOut  = Output(UInt(busDataW.W))
+      val busRdWrN = Output(Bool())
+      // Handshake signals: Bus -> DMA (read)
+      val busValid = Input(Bool())
+      val dmaReady = Output(Bool())
+      // Handshake signals: DMA -> Bus (write)
+      // val dmaValid = Output(Bool())
+      // val busReady = Input(Bool())
+    }
 
     // DMA <-> Controller
-    val localBaseAddr = Input(UInt(localAddrWidth.W))
-    val busBaseAddr   = Input(UInt(busAddrWidth.W))
-    val burstLen      = Input(UInt(localAddrWidth.W))
-    val sel   = Input(Bool())
-    val start = Input(Bool())
-    val done  = Output(Bool())
+    val ctrl = new Bundle() {
+      val localBaseAddr = Input(UInt(localAddrWidth.W))
+      val busBaseAddr = Input(UInt(busAddrWidth.W))
+      val burstLen = Input(UInt(localAddrWidth.W))
+      val sel = Input(Bool())
+      val start = Input(Bool())
+      val done = Output(Bool())
+    }
 
     // DMA <-> Local Memories
     val wrAddr = Output(Vec(dmaChannels, UInt(localAddrWidth.W)))
@@ -42,13 +46,13 @@ class DMA extends Module {
   val localAddrReg   = RegInit(0.U(localAddrWidth.W))  // Not just container but also an up-counter
   val busBaseAddrReg = RegInit(0.U(busAddrWidth.W))
   val burstLenReg    = RegInit(0.U(localAddrWidth.W))  // Not just container but also a down-counter
-  val busDataInReg   = RegNext(io.busDataIn)
+  val busDataInReg   = RegNext(io.bus.busDataIn)
 
   // Control/handshake registers
   val selReg      = RegInit(true.B)
   val doneReg     = RegInit(true.B)
   val dmaReadyReg = RegInit(false.B)
-  val busValidReg = RegNext(io.busValid)
+  val busValidReg = RegNext(io.bus.busValid)
 
 
   // Control FSM
@@ -67,12 +71,12 @@ class DMA extends Module {
   // Next state logic and (some of the) output driving
   io.wrEn := false.B  // Default value, see "read" state
   when (stateReg === init) {
-    when (io.start) {
+    when (io.ctrl.start) {
       stateReg := check
-      localAddrReg   := io.localBaseAddr
-      busBaseAddrReg := io.busBaseAddr
-      burstLenReg    := io.burstLen
-      selReg  := io.sel
+      localAddrReg   := io.ctrl.localBaseAddr
+      busBaseAddrReg := io.ctrl.busBaseAddr
+      burstLenReg    := io.ctrl.burstLen
+      selReg  := io.ctrl.sel
       doneReg := false.B
     }
   } .elsewhen (stateReg === check) {
@@ -110,25 +114,25 @@ class DMA extends Module {
   // ------------------
 
   // DMA <-> Bus Interface
-  io.busAddr     := busBaseAddrReg
-  io.busBurstLen := burstLenReg
-  io.dmaReady := dmaReadyReg
-  io.busRdWrN := true.B  // Reading only (for now)
+  io.bus.busAddr     := busBaseAddrReg
+  io.bus.busBurstLen := burstLenReg
+  io.bus.dmaReady := dmaReadyReg
+  io.bus.busRdWrN := true.B  // Reading only (for now)
 
   // DMA <-> Controller
-  io.done := doneReg
+  io.ctrl.done := doneReg
 
   // DMA <-> Local Memories
   io.memSel := selReg
+  val byteMsb = Array(7, 15, 23, 31)
+  val byteLsb = Array(0, 8, 16, 24)
   for (port <- 0 until dmaChannels) {
 
     // Turning the 32-bit-aligned addressing into byte addresses
     io.wrAddr(port) := localAddrReg + port.U
 
     // Splitting 4-byte data into bytes
-    val byteMsb = (port+1)*8 - 1
-    val byteLsb = port*8
-    io.wrData(port) := busDataInReg(byteMsb, byteLsb).asSInt()
+    io.wrData(port) := busDataInReg(byteMsb(port), byteLsb(port)).asSInt()
   }
 
 

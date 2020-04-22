@@ -12,26 +12,50 @@ class NNAccelerator extends Module {
     // ...
 
     // Test interface
-    val wrAddr = Input(Vec(2, UInt(localAddrWidth.W)))
-    val wrData = Input(Vec(2, baseType))
-    val wrEn   = Input(Vec(2, Bool()))
-    val ldEn   = Input(Bool())
-    val mac    = Output(Vec(gridSize, accuType))
+    // - Bus emulation for DMA
+    val bus = new Bundle() {
+      val busAddr = Output(UInt(busAddrWidth.W))
+      val busBurstLen = Output(UInt(localAddrWidth.W))
+      val busDataIn = Input(UInt(busDataWidth.W))
+      val busRdWrN = Output(Bool())
+      val busValid = Input(Bool())
+      val dmaReady = Output(Bool())
+    }
+    // - Controller emulation for DMA
+    val ctrl = new Bundle() {
+      val localBaseAddr = Input(UInt(localAddrWidth.W))
+      val busBaseAddr = Input(UInt(busAddrWidth.W))
+      val burstLen = Input(UInt(localAddrWidth.W))
+      val sel = Input(Bool())
+      val start = Input(Bool())
+      val done = Output(Bool())
+    }
+    // - Controller emulation for Load Unit
+    val ldEn = Input(Bool())
+    // - Output checking
+    val wrData = Output(Vec(dmaChannels, baseType))
+    val mac  = Output(Vec(gridSize, accuType))
   })
 
   // Submodules
+  val dma          = Module(new DMA)
   val localMemoryA = Module(new LocalMemory)
   val localMemoryB = Module(new LocalMemory)
   val loadUnit     = Module(new LoadUnit)
   val computeUnit  = Module(new ArithmeticGrid)
 
-  // Connecting memories to external write interface
-  localMemoryA.io.wrAddr := io.wrAddr(0)
-  localMemoryA.io.wrData := io.wrData(0)
-  localMemoryA.io.wrEn   := io.wrEn(0)
-  localMemoryB.io.wrAddr := io.wrAddr(1)
-  localMemoryB.io.wrData := io.wrData(1)
-  localMemoryB.io.wrEn   := io.wrEn(1)
+  // Connecting DMA to external test interface
+  dma.io.bus <> io.bus
+  dma.io.ctrl <> io.ctrl
+
+  // Connecting memories to DMA
+  localMemoryA.io.wrAddr := dma.io.wrAddr
+  localMemoryA.io.wrData := dma.io.wrData
+  io.wrData := dma.io.wrData
+  localMemoryA.io.wrEn   := (dma.io.memSel && dma.io.wrEn)
+  localMemoryB.io.wrAddr := dma.io.wrAddr
+  localMemoryB.io.wrData := dma.io.wrData
+  localMemoryB.io.wrEn   := (!dma.io.memSel && dma.io.wrEn)
 
   // Connecting "load enable" control signal to load unit
   loadUnit.io.en := io.ldEn
@@ -40,7 +64,7 @@ class NNAccelerator extends Module {
   localMemoryA.io.rdAddr := loadUnit.io.addrA
   localMemoryB.io.rdAddr := loadUnit.io.addrB
 
-  // Connecting the arithmetic unit
+  // Connecting the compute unit
   computeUnit.io.opA := localMemoryA.io.rdData
   computeUnit.io.opB := localMemoryB.io.rdData
   computeUnit.io.en  := loadUnit.io.auEn
