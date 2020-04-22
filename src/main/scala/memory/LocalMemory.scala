@@ -11,8 +11,8 @@ class LocalMemory extends Module {
   val io = IO(new Bundle() {
 
     // DMA interface
-    val wrAddr = Input(UInt(localAddrWidth.W))
-    val wrData = Input(baseType)
+    val wrAddr = Input(Vec(dmaChannels, UInt(localAddrWidth.W)))
+    val wrData = Input(Vec(dmaChannels, baseType))
     val wrEn   = Input(Bool())
 
     // Arithmetic Grid interface
@@ -36,12 +36,12 @@ class LocalMemory extends Module {
   for (i <- 0 until numberOfBanks) {
 
     // Connecting DMA interface
-    memBanks(i).wrAddr := io.wrAddr(localAddrWidth - 1, bankAddrWidth)
-    memBanks(i).wrData := io.wrData
+    memBanks(i).wrAddr := io.wrAddr(i%dmaChannels)(localAddrWidth - 1, bankAddrWidth)
+    memBanks(i).wrData := io.wrData(i%dmaChannels)
     if (bankAddrWidth == 0)
       memBanks(0).wrEn   := io.wrEn
     else
-      memBanks(i).wrEn   := (io.wrAddr(bankAddrWidth - 1, 0) === i.U) && io.wrEn
+      memBanks(i).wrEn   := (io.wrAddr(i%dmaChannels)(bankAddrWidth - 1, 0) === i.U) && io.wrEn
 
     // Connecting Arithmetic Grid interface
     // - Hardware support for unaligned read

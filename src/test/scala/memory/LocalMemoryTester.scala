@@ -29,16 +29,37 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
       println("Base address: " + randomBaseAddress.toString +
         ", end of burst: " + (randomBaseAddress + burst_len).toString)
       println("Writing...")
-      for (i <- 0 until burst_len + numberOfBanks - 1) {
-        poke(dut.io.wrAddr, ((randomBaseAddress + i) % maxAddress).U)
-        poke(dut.io.wrData, ((randomBaseAddress + i) % maxData).S)
-        poke(dut.io.wrEn, true.B)
-        step(1)
 
-        // A sloppy progressbar
-        if (i % tenPercent == 0) print("|")
-        else if (i % onePercent == 0) print(".")
-        if (i == (burst_len-1 + numberOfBanks-1)) print("\n")
+      // Determining address range of burst_len (e.g. 16) overlapping bursts
+      val writeRange = if ((burst_len+numberOfBanks-1) % dmaChannels == 0) (burst_len+numberOfBanks-1)
+                       else (burst_len+numberOfBanks-1) + 1
+
+      // Setting write enable to be active
+      poke(dut.io.wrEn, true.B)
+
+      // Writing memory content, dmaChannels (e.g. 4) bytes per clock
+      // Loop for the whole write process
+      for (stepOffset <- 0 until writeRange by dmaChannels) {
+        // Loop for driving individual channels
+        for (subStepOffset <- 0 until dmaChannels) {
+
+          // Address and data to be assigned to the channel
+          val address = (randomBaseAddress + stepOffset + subStepOffset) % maxAddress
+          val data = (randomBaseAddress + stepOffset + subStepOffset) % maxData
+
+          // Determining which channel could it be assigned to (aligned memory)
+          val chIdx = address % dmaChannels
+
+          // Channel driving
+          poke(dut.io.wrAddr(chIdx), address.U)
+          poke(dut.io.wrData(chIdx), data.S)
+
+          // A sloppy progressbar
+          if ((stepOffset+subStepOffset) % tenPercent == 0) print("|")
+          else if ((stepOffset+subStepOffset) % onePercent == 0) print(".")
+          if ((stepOffset+subStepOffset) == (burst_len-1 + numberOfBanks-1)) print("\n")
+        }
+        step(1)
       }
 
       println("Reading...")
@@ -70,8 +91,9 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
 
         // Write address = {i, bankIdx}
         val catAddress = (i << dut.getBankAddrW) + randomBankIndex
-        poke(dut.io.wrAddr, catAddress.U)
-        poke(dut.io.wrData, (i - maxAddressSingleBank/2).S)
+        val chIdx = catAddress % dmaChannels
+        poke(dut.io.wrAddr(chIdx), catAddress.U)
+        poke(dut.io.wrData(chIdx), (i - maxAddressSingleBank/2).S)
         poke(dut.io.wrEn, true.B)
         step(1)
 
