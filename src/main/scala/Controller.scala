@@ -76,25 +76,22 @@ class Controller(testInternals: Boolean) extends Module {
       statusReg := Cat(statusReg(erFl), 0.U(inactiveBitsInStatus.W), bits5to0)
     }
   }
-  // Other registers are available only if the NNA is enabled
-  when (statusReg(chEn)) {
-    when(io.commandSel) {  // Command register file: WR
-      when(!io.rdWrN) {
-        commandRF(io.addr(blockAddrW - 1, 0)) := io.wrData
-        cmdValid := Cat(cmdValid(busDataWidth - 2, 0), 1.U(1.W))
-      }
+  when(io.commandSel) {  // Command register file: WR
+    when(!io.rdWrN) {
+      commandRF(io.addr(blockAddrW - 1, 0)) := io.wrData
+      cmdValid := Cat(cmdValid(busDataWidth - 2, 0), 1.U(1.W))
     }
-    when(io.ldAddrSel) {   // Load Address register file: WR
-      when(!io.rdWrN) {
-        loadAddrRF(io.addr(blockAddrW - 1, 0)) := io.wrData
-        ldAValid := Cat(ldAValid(busDataWidth - 2, 0), 1.U(1.W))
-      }
+  }
+  when(io.ldAddrSel) {   // Load Address register file: WR
+    when(!io.rdWrN) {
+      loadAddrRF(io.addr(blockAddrW - 1, 0)) := io.wrData
+      ldAValid := Cat(ldAValid(busDataWidth - 2, 0), 1.U(1.W))
     }
-    when(io.ldSizeSel) {   // Load Size register file: WR
-      when(!io.rdWrN) {
-        loadSizeRF(io.addr(blockAddrW - 1, 0)) := io.wrData
-        ldSValid := Cat(ldSValid(busDataWidth - 2, 0), 1.U(1.W))
-      }
+  }
+  when(io.ldSizeSel) {   // Load Size register file: WR
+    when(!io.rdWrN) {
+      loadSizeRF(io.addr(blockAddrW - 1, 0)) := io.wrData
+      ldSValid := Cat(ldSValid(busDataWidth - 2, 0), 1.U(1.W))
     }
   }
 
