@@ -2,6 +2,7 @@
 import chisel3._
 import chisel3.util.{Cat, Enum, log2Up}
 import _root_.memory._
+import scala.collection.immutable.ListMap
 
 class Controller(testInternals: Boolean) extends Module {
 
@@ -25,7 +26,12 @@ class Controller(testInternals: Boolean) extends Module {
   // ...
   val erFl = busDataWidth-1  // Error flag: signals that an error occurred during the last operation (RD)
   // Related
-  val inactiveBitsInStatus = busDataWidth - 7
+  val unusedBitsInStatus = busDataWidth - 7
+
+  // Supported commands
+  val DUMMY    = 42 // For testing only
+  val LOAD_A   = 3  // [000...011] Loads data into memory A. Needs base address and size of data to be specified.
+  val LOAD_B   = 2  // [000...010] Loads data into memory B. Needs base address and size of data to be specified.
 
   // Useful constants for module
   val blockAddrW  = log2Up(busDataWidth)
@@ -50,6 +56,16 @@ class Controller(testInternals: Boolean) extends Module {
     val commandSel = Input(Bool())
     val ldAddrSel  = Input(Bool())
     val ldSizeSel  = Input(Bool())
+
+    // DMA interface
+    val dma = new Bundle() {
+      val localBaseAddr = Output(UInt(localAddrWidth.W))
+      val busBaseAddr   = Output(UInt(busAddrWidth.W))
+      val burstLen      = Output(UInt(localAddrWidth.W))
+      val sel   = Output(Bool())
+      val start = Output(Bool())
+      val done  = Input(Bool())
+    }
 
     // Test port
     // - Memory-mapped and internal registers
@@ -96,7 +112,7 @@ class Controller(testInternals: Boolean) extends Module {
       val bits5to3 = Cat(io.wrData(acEn), itFlag, io.wrData(itEn))
       val queueEmpty = statusReg(qEmp) || io.wrData(qEmp)
       val bits5to0 = Cat(bits5to3, queueEmpty, statusReg(busy), io.wrData(chEn))
-      statusReg := Cat(statusReg(erFl), 0.U(inactiveBitsInStatus.W), bits5to0)
+      statusReg := Cat(statusReg(erFl), 0.U(unusedBitsInStatus.W), bits5to0)
     }
   } .otherwise {  // Non-bus operations involving statusReg
     // Refreshing queue-is-empty bit at every clock cycle other than bus reads/writes
@@ -147,6 +163,7 @@ class Controller(testInternals: Boolean) extends Module {
       ldAValid(i) := false.B
   } .elsewhen (ldARead) {
     ldAValid(ldAPtr) := false.B
+    ldAValid(ldAPtr + 1.U) := false.B
   }
   when (io.ldSizeSel && !io.rdWrN) {
     ldSValid(io.addr(blockAddrW - 1, 0)) := true.B
@@ -182,6 +199,11 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Command ("instruction") and operand registers (to be continued...)
   val currCommand = RegInit(0.U(busDataWidth.W))
+  val dmaLocalBaseAddr = RegInit(0.U(localAddrWidth.W))
+  val dmaBusBaseAddr   = RegInit(0.U(busAddrWidth.W))
+  val dmaBurstLen      = RegInit(0.U(localAddrWidth.W))
+  val dmaMemSel = RegInit(true.B)
+  val dmaStart  = RegInit(false.B)
 
   // Next state logic and related operations
   when (stateReg === idle) {
@@ -205,15 +227,36 @@ class Controller(testInternals: Boolean) extends Module {
     }
   } .elsewhen (stateReg === decode) {
     when (statusReg(chEn)) {
-      stateReg := execute
+      when (currCommand === DUMMY.U) {
+        stateReg := execute
+      } .elsewhen ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U)) {
+        stateReg := execute
+        // Providing information for DMA
+        dmaLocalBaseAddr := loadAddrRF(ldAPtr)(localAddrWidth-1, 0)
+        dmaBusBaseAddr   := loadAddrRF(ldAPtr + 1.U)
+        dmaBurstLen      := loadSizeRF(ldSPtr)
+        // Providing control signals for DMA
+        dmaMemSel := (currCommand === LOAD_A.U)
+        dmaStart  := true.B
+        // Updating read pointers
+        ldAPtr := ldAPtr + 2.U
+        ldSPtr := ldSPtr + 1.U
+      } .otherwise {
+        stateReg := idle
+      }
     } .otherwise {
       stateReg := idle
     }
   } .elsewhen (stateReg === execute) {
-    when (cmdValid.asUInt.orR) {
-      stateReg := fetch
-    } .otherwise {
-      stateReg := idle
+    when (dmaStart) {                    // If a load operation has just started
+      stateReg := execute                // deactivate start and keep executing
+      dmaStart := false.B
+    } .elsewhen (!io.dma.done) {         // If a load operation is in progress
+      stateReg := execute                // wait for it to end ("keep executing")
+    } .elsewhen (cmdValid.asUInt.orR) {  // If no outside operation is in progress
+      stateReg := fetch                  // then fetch a new command
+    } .otherwise {                       // If no valid command remained
+      stateReg := idle                   // then go idle
     }
   } .otherwise {
     stateReg := idle
@@ -221,6 +264,15 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Signals to invalidate register data on read (to be continued...)
   cmdRead := (stateReg === fetch) && statusReg(chEn) && cmdValid(cmdPtr)
+  ldARead := (stateReg === decode) && statusReg(chEn) && ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U))
+  ldSRead := (stateReg === decode) && statusReg(chEn) && ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U))
+
+  // Output driving from registers
+  io.dma.localBaseAddr := dmaLocalBaseAddr
+  io.dma.busBaseAddr   := dmaBusBaseAddr
+  io.dma.burstLen      := dmaBurstLen
+  io.dma.sel   := dmaMemSel
+  io.dma.start := dmaStart
 
   // Providing information about the internal
   // state of Controller for testing
