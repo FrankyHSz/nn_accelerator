@@ -85,6 +85,15 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   startFSM
   checkFSM_noBurstLen
 
+  // Testing activation selector commands
+  // ------------------------------------
+  println("[CtrlTester] Testing activation selector commands...")
+
+  resetFSM
+  writeActivationSelectCommands
+  startFSM
+  checkFSM_activationToggling
+
   // --------------------
   // Test steps in detail
   // --------------------
@@ -543,6 +552,78 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     val one: BigInt = 1
     val expStatusU = (one << dut.erFl) + (1 << dut.chEn) + (if (expectQueueEmpty) (1 << dut.qEmp) else 0)
     expect(dut.io.statusReg, expStatusU)
+  }
+
+  // Tests for activation selection
+  // ------------------------------
+
+  def writeActivationSelectCommands: Unit = {
+    // Writing commands
+    poke(dut.io.commandSel, true.B)
+    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.addr, 0.U)
+    poke(dut.io.wrData, dut.SET_RELU.U)
+    // - Before clock edge, everything remains in reset
+    expect(dut.io.statusReg, resetWord)
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), false)
+    step(1)
+    // - After first clock edge, only cmdValid(0) changes to true
+    expect(dut.io.statusReg, resetWord)
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), (i==0))
+    step(1)
+    // - After second clock edge, statusReg's queue-empty bit changes to 0
+    expect(dut.io.statusReg, 0.U)
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), (i==0))
+    // - Writing additional commands
+    for (i <- 1 until 4) {
+      poke(dut.io.addr, i.U)
+      val loadCmd = if (i%2 == 0) dut.SET_RELU else dut.SET_SIGM
+      poke(dut.io.wrData, loadCmd.U)
+      step(1)
+    }
+    // - Expecting active valid bits for all of them
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), (i < 4))
+    poke(dut.io.commandSel, false.B)
+    poke(dut.io.rdWrN, true.B)
+  }
+
+  def checkFSM_activationToggling: Unit = {
+    expect(dut.io.stateReg, dut.idle)     // FSM is still in idle state because signal propagation
+    step(1)                               // takes two cycles: io.wrData -> statusReg -> stateReg
+    expect(dut.io.stateReg, dut.fetch)    // FSM is in fetch state after one clock edge
+    step(1)
+    expect(dut.io.stateReg, dut.decode)       // FSM is in decode state after two clock edges
+    expect(dut.io.currCommand, dut.SET_RELU)  // 0th command is in current-command register
+    expect(dut.io.cmdPtr, 1.U)                // cmdPtr points to the next (1st) command
+    step(1)
+    expect(dut.io.stateReg, dut.execute)      // FSM is in execute state after three clock edges
+    expect(dut.io.currCommand, dut.SET_RELU)  // Current-command register remains the same
+    expect(dut.io.cmdPtr, 1.U)                // cmdPtr remains the same
+    // - This repeats until no valid command remain
+    cmdPtr = 1
+    while (toBoolean(peek(dut.io.cmdValid(cmdPtr)), 0)) {
+      step(1)
+      expect(dut.io.stateReg, dut.fetch)
+      cmdPtr += 1
+      step(1)
+      expect(dut.io.stateReg, dut.decode)
+      val expCmd = if ((cmdPtr-1)%2 == 0) dut.SET_RELU else dut.SET_SIGM
+      expect(dut.io.currCommand, expCmd)
+      expect(dut.io.cmdPtr, cmdPtr)
+      step(1)
+      expect(dut.io.stateReg, dut.execute)  // FSM is in execute state after three clock edges
+      expect(dut.io.currCommand, expCmd)    // Current-command register remains the same
+      expect(dut.io.cmdPtr, cmdPtr)         // cmdPtr remains the same
+    }
+    step(1)
+    expect(dut.io.stateReg, dut.idle)  // First, the FSM goes to idle
+    step(1)
+    expStatus = (1 << dut.chEn) + (1 << dut.qEmp)
+    expect(dut.io.statusReg, expStatus)  // Then queue-empty bit gets asserted
   }
 
 

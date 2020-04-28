@@ -40,6 +40,8 @@ class Controller(testInternals: Boolean) extends Module {
   val DUMMY    = 42 // For testing only
   val LOAD_A   = 3  // [000...011] Loads data into memory A. Needs base address and size of data to be specified.
   val LOAD_B   = 2  // [000...010] Loads data into memory B. Needs base address and size of data to be specified.
+  val SET_SIGM = 4  // [00...0100] Sets activation to sigmoid. No further data required (N.f.d.r.).
+  val SET_RELU = 5  // [00...0101] Sets activation to ReLU. N.f.d.r.
 
   // Useful constants for module
   val blockAddrW  = log2Up(busDataWidth)
@@ -75,6 +77,9 @@ class Controller(testInternals: Boolean) extends Module {
       val start = Output(Bool())
       val done  = Input(Bool())
     }
+
+    // Activation select for the Activation Grid
+    val actSel = Output(Bool())
 
     // Test port
     // - Memory-mapped and internal registers
@@ -119,6 +124,9 @@ class Controller(testInternals: Boolean) extends Module {
   val ldSValid   = RegInit(VecInit(Seq.fill(busDataWidth)(false.B)))  // Internal, not memory-mapped
   val loadAddrRF = Reg(Vec(busDataWidth, UInt(busDataWidth.W)))
   val loadSizeRF = Reg(Vec(busDataWidth, UInt(busDataWidth.W)))
+
+  // Activation Select register that drives io.actSel (set/reset logic is in FSM)
+  val actSelReg = RegInit(false.B)  // Sigmoid is default
 
   // Register RD/WR logic
   io.rdData := 0.U
@@ -283,6 +291,9 @@ class Controller(testInternals: Boolean) extends Module {
         // Updating read pointers
         ldAPtr := ldAPtr + 2.U
         ldSPtr := ldSPtr + 1.U
+      } .elsewhen ((currCommand === SET_SIGM.U) || (currCommand === SET_RELU.U)) {
+        stateReg := execute
+        actSelReg := (currCommand === SET_RELU.U)
       } .otherwise {
         setUnknownCommand := true.B
         stateReg := idle
@@ -317,6 +328,8 @@ class Controller(testInternals: Boolean) extends Module {
   io.dma.burstLen      := dmaBurstLen
   io.dma.sel   := dmaMemSel
   io.dma.start := dmaStart
+  // - Activation Grid
+  io.actSel := actSelReg
 
   // Providing information about the internal
   // state of Controller for testing
