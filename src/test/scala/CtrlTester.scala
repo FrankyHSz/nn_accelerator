@@ -77,13 +77,13 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   writeBurstSizes
   startFSM
   checkFSM_noLoadAddress
-//
-//  resetFSM
-//  writeLoadCommands
-//  writeBaseAddresses
-//  // Don't write burst sizes
-//  startFSM
-//  checkFSM_noBurstLen
+
+  resetFSM
+  writeLoadCommands
+  writeBaseAddresses
+  // Don't write burst sizes
+  startFSM
+  checkFSM_noBurstLen
 
   // --------------------
   // Test steps in detail
