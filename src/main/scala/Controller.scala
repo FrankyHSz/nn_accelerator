@@ -11,11 +11,12 @@ class Controller(testInternals: Boolean) extends Module {
   // --------------------
 
   // Register address map -- RD: readable, WR: writable
-  val STATUS    = 0 * busDataWidth + 0  // (see below)
-  val ERR_CAUSE = 0 * busDataWidth + 1  // (RD)
-  val CMD_RF_B  = 1 * busDataWidth      // (WR)
-  val LD_ADDR_B = 2 * busDataWidth      // (WR)
-  val LD_SIZE_B = 3 * busDataWidth      // (WR)
+  // (To modify it, go to the companion object)
+  val STATUS    = ocp.STATUS     // (see below)
+  val ERR_CAUSE = ocp.ERR_CAUSE  // (RD)
+  val CMD_RF_B  = ocp.CMD_RF_B   // (WR)
+  val LD_ADDR_B = ocp.LD_ADDR_B  // (WR)
+  val LD_SIZE_B = ocp.LD_SIZE_B  // (WR)
 
   // Control/status register bits (indices) -- RD: readable, WR: writable, CL: cleanable, ST: settable
   val chEn = 0  // Chip enable      : enables operation according to the command queue (RD/WR)
@@ -56,7 +57,7 @@ class Controller(testInternals: Boolean) extends Module {
   val io = IO(new Bundle {
 
     // RD/WR interface for register files
-    val addr   = Input(UInt(busAddrWidth.W))   // Decoded address (offset inside IP address space)
+    val addr   = Input(UInt(blockAddrW.W))   // Decoded address (offset inside IP address space)
     val wrData = Input(UInt(busDataWidth.W))
     val rdData = Output(UInt(busDataWidth.W))
     val rdWrN  = Input(Bool())
