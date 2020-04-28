@@ -290,7 +290,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.currCommand, dummyCmd)  // Current-command register remains the same
     expect(dut.io.cmdPtr, 1.U)            // cmdPtr remains the same
     // - This repeats until no valid command rem
-    // var cmdPtr = 1
+    cmdPtr = 1
     while (toBoolean(peek(dut.io.cmdValid(cmdPtr)), 0)) {
       step(1)
       expect(dut.io.stateReg, dut.fetch)
@@ -530,6 +530,8 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.statusReg, expStatus)     // Before clock edge, status is normal
     step(1)
     expect(dut.io.stateReg, dut.idle)       // FSM is back to idle state because of error
+    if (expCommand == loadACmd || expCommand == loadBCmd)
+      expect(dut.io.dma.start, false.B)     // If some information is missing, no DMA cycle starts
     // expStatus: only chip enable is active (queue not empty, see writeLoadCommands function)
     // Error can already be seen in errorCause register
     expStatus = (1 << dut.chEn) + (if (expectQueueEmpty) (1 << dut.qEmp) else 0)

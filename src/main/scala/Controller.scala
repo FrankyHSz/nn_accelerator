@@ -279,7 +279,7 @@ class Controller(testInternals: Boolean) extends Module {
         }
         // Providing control signals for DMA
         dmaMemSel := (currCommand === LOAD_A.U)
-        dmaStart  := true.B
+        dmaStart  := ldAValid(ldAPtr) && ldAValid(ldAPtr+1.U) && ldSValid(ldSPtr)
         // Updating read pointers
         ldAPtr := ldAPtr + 2.U
         ldSPtr := ldSPtr + 1.U
@@ -311,6 +311,7 @@ class Controller(testInternals: Boolean) extends Module {
   ldSRead := (stateReg === decode) && statusReg(chEn) && ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U))
 
   // Output driving from registers
+  // - DMA
   io.dma.localBaseAddr := dmaLocalBaseAddr
   io.dma.busBaseAddr   := dmaBusBaseAddr
   io.dma.burstLen      := dmaBurstLen
