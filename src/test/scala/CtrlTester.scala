@@ -36,7 +36,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   checkFSM_Dummy
 
   // State machine and DMA interface tests with load commands
-  // ---------------------------------------
+  // --------------------------------------------------------
   println("[CtrlTester] State machine and DMA interface testing with load commands...")
 
   // Load parameters
@@ -59,6 +59,31 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   writeBurstSizes
   startFSM
   checkFSM_Load
+
+  // Testing error handling capabilities of the state machine
+  // --------------------------------------------------------
+  println("[CtrlTester] Testing error handling capabilities of the state machine...")
+
+  val invalidCmd = 99
+
+  resetFSM
+  writeInvalidCommand
+  startFSM
+  checkFSM_invalidCmd
+
+  resetFSM
+  writeLoadCommands
+  // Don't write base addresses
+  writeBurstSizes
+  startFSM
+  checkFSM_noLoadAddress
+//
+//  resetFSM
+//  writeLoadCommands
+//  writeBaseAddresses
+//  // Don't write burst sizes
+//  startFSM
+//  checkFSM_noBurstLen
 
   // --------------------
   // Test steps in detail
@@ -196,16 +221,18 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     poke(dut.io.wrData, resetWord.U)
     poke(dut.io.rdWrN, false.B)
     step(1)
-    expect(dut.io.statusReg, resetWord)
     poke(dut.io.statusSel, false.B)
+    poke(dut.io.rdWrN, true.B)
+    step(1)                              // Reset needs two cycles to take full effect
+    expect(dut.io.statusReg, resetWord)  // because of signal propagation (error flag in status)
   }
 
   def startFSM: Unit = {
     // Starting FSM and inspecting it as it "processes" the commands
     // - startWord: Sets chip enable to start operations
     // val startWord = (1 << dut.chEn)
-    poke(dut.io.commandSel, false.B)
     poke(dut.io.statusSel, true.B)
+    poke(dut.io.rdWrN, false.B)
     poke(dut.io.wrData, startWord.U)
     expect(dut.io.stateReg, dut.idle)     // FSM starts from idle state
     step(1)
@@ -246,6 +273,8 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     // - Expecting active valid bits for all of them (0 to 10)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i<=10))
+    poke(dut.io.commandSel, false.B)
+    poke(dut.io.rdWrN, true.B)
   }
 
   def checkFSM_Dummy: Unit = {
@@ -316,12 +345,14 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i < 2*loadConfigs))
     poke(dut.io.commandSel, false.B)
+    poke(dut.io.rdWrN, true.B)
   }
 
   def writeBaseAddresses: Unit = {
     // Writing base addresses: local address first, bus address second
     // - Writing first addresses
     poke(dut.io.ldAddrSel, true.B)
+    poke(dut.io.rdWrN, false.B)
     poke(dut.io.addr, 0.U)
     poke(dut.io.wrData, localBaseAddrA(0).U)
     // - Before clock edge, everything remains in reset (invalid addresses)
@@ -353,11 +384,13 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
         expect(dut.io.ldAValid(bit), (bit < (2*i+2)))
     }
     poke(dut.io.ldAddrSel, false.B)
+    poke(dut.io.rdWrN, true.B)
   }
 
   def writeBurstSizes: Unit = {
     // Writing burst lengths
     poke(dut.io.ldSizeSel, true.B)
+    poke(dut.io.rdWrN, false.B)
     poke(dut.io.addr, 0.U)
     for (i <- 0 until 2*loadConfigs) {
       poke(dut.io.addr, i.U)
@@ -368,6 +401,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
         expect(dut.io.ldSValid(bit), (bit < i+1))
     }
     poke(dut.io.ldSizeSel, false.B)
+    poke(dut.io.rdWrN, true.B)
   }
 
   def checkFSM_Load: Unit = {
@@ -451,6 +485,62 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     step(1)
     expStatus = (1 << dut.chEn) + (1 << dut.qEmp)
     expect(dut.io.statusReg, expStatus)     // Expecting queue-empty signal to be active after one clock cycle
+  }
+
+  // Tests of error handling
+  // -----------------------
+
+  def writeInvalidCommand: Unit = {
+    poke(dut.io.commandSel, true.B)
+    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.addr, 0.U)
+    poke(dut.io.wrData, invalidCmd.U)
+    // - Before clock edge, everything remains in reset
+    expect(dut.io.statusReg, resetWord)
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), false)
+    step(1)
+    // - After first clock edge, only cmdValid(0) changes to true
+    expect(dut.io.statusReg, resetWord)
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), (i==0))
+    step(1)
+    // - After second clock edge, statusReg's queue-empty bit changes to 0
+    expect(dut.io.statusReg, 0.U)
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), (i==0))
+    poke(dut.io.commandSel, false.B)
+    poke(dut.io.rdWrN, true.B)
+  }
+
+  def checkFSM_invalidCmd: Unit = checkError(invalidCmd, dut.unknownCommand, expectQueueEmpty = true)
+
+  def checkFSM_noLoadAddress: Unit = checkError(loadACmd, dut.noBaseAddress, expectQueueEmpty = false)
+
+  def checkFSM_noBurstLen: Unit = checkError(loadACmd, dut.noSize, expectQueueEmpty = false)
+
+  def checkError(expCommand: Int, expErrorCode: Int, expectQueueEmpty: Boolean): Unit = {
+    expect(dut.io.stateReg, dut.idle)
+    step(1)
+    expect(dut.io.stateReg, dut.fetch)
+    step(1)
+    expect(dut.io.stateReg, dut.decode)
+    expect(dut.io.currCommand, expCommand)  // First load command is under decoding
+    expStatus = (1 << dut.chEn)
+    expect(dut.io.statusReg, expStatus)     // Before clock edge, status is normal
+    step(1)
+    expect(dut.io.stateReg, dut.idle)       // FSM is back to idle state because of error
+    // expStatus: only chip enable is active (queue not empty, see writeLoadCommands function)
+    // Error can already be seen in errorCause register
+    expStatus = (1 << dut.chEn) + (if (expectQueueEmpty) (1 << dut.qEmp) else 0)
+    val expError = (1 << expErrorCode)
+    expect(dut.io.statusReg, expStatus)
+    expect(dut.io.errorCause, expError)
+    step(1)
+    // Error flag is raised now
+    val one: BigInt = 1
+    val expStatusU = (one << dut.erFl) + (1 << dut.chEn) + (if (expectQueueEmpty) (1 << dut.qEmp) else 0)
+    expect(dut.io.statusReg, expStatusU)
   }
 
 

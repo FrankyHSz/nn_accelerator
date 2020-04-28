@@ -10,11 +10,12 @@ class Controller(testInternals: Boolean) extends Module {
   // Module configuration
   // --------------------
 
-  // Register address map
-  val STATUS    = 0 * busDataWidth + 0
-  val CMD_RF_B  = 1 * busDataWidth
-  val LD_ADDR_B = 2 * busDataWidth
-  val LD_SIZE_B = 3 * busDataWidth
+  // Register address map -- RD: readable, WR: writable
+  val STATUS    = 0 * busDataWidth + 0  // (see below)
+  val ERR_CAUSE = 0 * busDataWidth + 1  // (RD)
+  val CMD_RF_B  = 1 * busDataWidth      // (WR)
+  val LD_ADDR_B = 2 * busDataWidth      // (WR)
+  val LD_SIZE_B = 3 * busDataWidth      // (WR)
 
   // Control/status register bits (indices) -- RD: readable, WR: writable, CL: cleanable, ST: settable
   val chEn = 0  // Chip enable      : enables operation according to the command queue (RD/WR)
@@ -27,6 +28,13 @@ class Controller(testInternals: Boolean) extends Module {
   val erFl = busDataWidth-1  // Error flag: signals that an error occurred during the last operation (RD)
   // Related
   val unusedBitsInStatus = busDataWidth - 7
+
+  // Error Cause register bits (indices) -- The whole register is read-only
+  val unknownCommand = 0  // If a command (which is claimed to be valid in cmdValid reg.) is unrecognized.
+  val noBaseAddress  = 1  // If there was no corresponding base address found for a load command.
+  val noSize         = 2  // If there was no data size found for a load command.
+  // Related
+  val unusedBitsInErrorCause = busDataWidth - 3
 
   // Supported commands
   val DUMMY    = 42 // For testing only
@@ -53,6 +61,7 @@ class Controller(testInternals: Boolean) extends Module {
 
     // Decoded block select signals from Bus Interface
     val statusSel  = Input(Bool())
+    val errCauseSel = Input(Bool())
     val commandSel = Input(Bool())
     val ldAddrSel  = Input(Bool())
     val ldSizeSel  = Input(Bool())
@@ -70,6 +79,7 @@ class Controller(testInternals: Boolean) extends Module {
     // Test port
     // - Memory-mapped and internal registers
     val statusReg  = if (testInternals) Output(UInt(busDataWidth.W)) else Output(UInt(0.W))
+    val errorCause = if (testInternals) Output(UInt(busDataWidth.W)) else Output(UInt(0.W))
     val cmdValid   = if (testInternals) Output(Vec(busDataWidth, Bool())) else Output(Vec(0, Bool()))
     val commandRF  = if (testInternals) Output(Vec(busDataWidth, UInt(busDataWidth.W))) else Output(Vec(0, UInt(0.W)))
     val ldAValid   = if (testInternals) Output(Vec(busDataWidth, Bool())) else Output(Vec(0, Bool()))
@@ -92,6 +102,14 @@ class Controller(testInternals: Boolean) extends Module {
   // Control/status register
   val statusReg = RegInit(0.U(busDataWidth.W))
 
+  // Error Cause register (see possible error causes under Module Configuration)
+  val errorCause = RegInit(0.U(busDataWidth.W))
+
+  // Error Cause wires
+  val setUnknownCommand = WireDefault(false.B)
+  val setNoBaseAddress  = WireDefault(false.B)
+  val setNoSize         = WireDefault(false.B)
+
   // Command registers
   val cmdValid  = RegInit(VecInit(Seq.fill(busDataWidth)(false.B)))  // Internal, not memory-mapped
   val commandRF = Reg(Vec(busDataWidth, UInt(busDataWidth.W)))
@@ -113,10 +131,23 @@ class Controller(testInternals: Boolean) extends Module {
       val queueEmpty = statusReg(qEmp) || io.wrData(qEmp)
       val bits5to0 = Cat(bits5to3, queueEmpty, statusReg(busy), io.wrData(chEn))
       statusReg := Cat(statusReg(erFl), 0.U(unusedBitsInStatus.W), bits5to0)
+
+      // When the programmer invalidates all registers by setting the queue-empty bit
+      // then all error flags should be cleared
+      when (io.wrData(qEmp)) {
+        errorCause := 0.U
+      }
     }
-  } .otherwise {  // Non-bus operations involving statusReg
+  } .otherwise {  // Register update outside bus operations
     // Refreshing queue-is-empty bit at every clock cycle other than bus reads/writes
-    statusReg := Cat(statusReg(busDataWidth-1, 3), !cmdValid.asUInt.orR, statusReg(1, 0))
+    statusReg := Cat(errorCause.orR, statusReg(busDataWidth-2, 3), !cmdValid.asUInt.orR, statusReg(1, 0))
+  }
+  when (io.errCauseSel) {  // Error Cause register: RD (resettable by setting queue-empty bit of status reg.)
+    when (io.rdWrN) {
+      io.rdData := errorCause
+    }
+  } .otherwise {  // Register update outside bus operations
+    errorCause := Cat(0.U(unusedBitsInErrorCause.W), setNoSize, setNoBaseAddress, setUnknownCommand)
   }
   when(io.commandSel) {  // Command register file: WR
     when(!io.rdWrN) {
@@ -178,6 +209,7 @@ class Controller(testInternals: Boolean) extends Module {
   // state of Controller for testing
   if (testInternals) {
     io.statusReg  := statusReg
+    io.errorCause := errorCause
     io.cmdValid   := cmdValid
     io.commandRF  := commandRF
     io.ldAValid   := ldAValid
@@ -207,9 +239,11 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Next state logic and related operations
   when (stateReg === idle) {
-    when(statusReg(chEn) && !statusReg(qEmp)) {
+    when(statusReg(chEn) && !statusReg(qEmp) && !statusReg(erFl)) {
       stateReg := fetch
       cmdPtr := 0.U
+      ldAPtr := 0.U
+      ldSPtr := 0.U
     }
   } .elsewhen (stateReg === fetch) {
     when (statusReg(chEn)) {
@@ -219,11 +253,9 @@ class Controller(testInternals: Boolean) extends Module {
         cmdPtr := cmdPtr + 1.U
       } .otherwise {
         stateReg := idle
-        cmdPtr := 0.U
       }
     } .otherwise {
       stateReg := idle
-      cmdPtr := 0.U
     }
   } .elsewhen (stateReg === decode) {
     when (statusReg(chEn)) {
@@ -232,9 +264,19 @@ class Controller(testInternals: Boolean) extends Module {
       } .elsewhen ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U)) {
         stateReg := execute
         // Providing information for DMA
-        dmaLocalBaseAddr := loadAddrRF(ldAPtr)(localAddrWidth-1, 0)
-        dmaBusBaseAddr   := loadAddrRF(ldAPtr + 1.U)
-        dmaBurstLen      := loadSizeRF(ldSPtr)
+        when (ldAValid(ldAPtr) && ldAValid(ldAPtr+1.U)) {
+          dmaLocalBaseAddr := loadAddrRF(ldAPtr)(localAddrWidth - 1, 0)
+          dmaBusBaseAddr := loadAddrRF(ldAPtr + 1.U)
+        } .otherwise {
+          setNoBaseAddress := true.B
+          stateReg := idle
+        }
+        when (ldSValid(ldSPtr)) {
+          dmaBurstLen := loadSizeRF(ldSPtr)
+        } .otherwise {
+          setNoSize := true.B
+          stateReg := idle
+        }
         // Providing control signals for DMA
         dmaMemSel := (currCommand === LOAD_A.U)
         dmaStart  := true.B
@@ -242,6 +284,7 @@ class Controller(testInternals: Boolean) extends Module {
         ldAPtr := ldAPtr + 2.U
         ldSPtr := ldSPtr + 1.U
       } .otherwise {
+        setUnknownCommand := true.B
         stateReg := idle
       }
     } .otherwise {
@@ -286,8 +329,9 @@ class Controller(testInternals: Boolean) extends Module {
 
 
   // Helper functions
-  def getRegMap = Map(
+  def getRegMap = ListMap(
     "Status Register"                         -> STATUS,
+    "Error Cause Register"                    -> ERR_CAUSE,
     "Command Register File Base Address"      -> CMD_RF_B,
     "Load Address Register File Base Address" -> LD_ADDR_B,
     "Load Size Register File Base Address"    -> LD_SIZE_B
