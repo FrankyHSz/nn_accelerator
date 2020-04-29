@@ -13,4 +13,10 @@ object OCPTesterMain extends App {
     }
   }
 
+  if (testAll || args(0) == "testOCPBurst") {
+    iotesters.Driver.execute(args, () => new OcpBurstTestSetup()) {
+      c => new OCPBurstTester(c)
+    }
+  }
+
 }

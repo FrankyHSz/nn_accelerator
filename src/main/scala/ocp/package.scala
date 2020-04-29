@@ -5,6 +5,19 @@ package object ocp {
   // ------------------------
   val addrWidth = 32
   val dataWidth = 32
+  val burstLen  = 4
+
+
+  // Configuration of system bus (for simulation)
+  // --------------------------------------------
+  val sysMemSize = 1 << 10  // 4kB = 1024 * 32bit
+
+
+  // Configuration of OCP Burst Master BFM (for simulation)
+  // ------------------------------------------------------
+  val requestPeriod = 16
+  val offset = 3
+
 
   // Configuration of the module's address space
   // -------------------------------------------
