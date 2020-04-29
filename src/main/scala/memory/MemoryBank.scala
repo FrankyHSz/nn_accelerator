@@ -16,11 +16,11 @@ class MemoryBank extends Module {
     val rdData = Output(baseType)
   })
 
-  val memory = Reg(Vec((1 << bankAddrWidth), baseType))
+  val memory = SyncReadMem((1 << bankAddrWidth), baseType)
 
-  io.rdData := RegNext(memory(io.rdAddr))
+  io.rdData := memory.read(io.rdAddr)
   when (io.wrEn) {
-    memory(io.wrAddr) := io.wrData
+    memory.write(io.wrAddr, io.wrData)
   }
 
   // Helper functions for testing
