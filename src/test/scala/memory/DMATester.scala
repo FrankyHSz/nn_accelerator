@@ -13,6 +13,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
   // Test constants
   val logConfig     = false
   val sysMemSize    = 256
+  val outputMemSize = 256
   val dummyData     = 42
   val numOfConfigs  = 3  // Should match the size of the arrays below
   val sysMemOffsets = Array(3, 142, 99)
@@ -29,11 +30,13 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
   // Useful constants
   val localMemSize = 1 << dut.getLocalAddrW
   val maxData = 1 << dut.getBusDataW
+  val maxLocalData = 1 << dut.getLocalDataW
   val MSBs = Array(7, 15, 23, 31)
   val LSBs = Array(0, 8, 16, 24)
 
-  // System memory model
+  // Memory models
   val systemMemory = Array.tabulate(sysMemSize)( i => (i - sysMemSize/2)%maxData )
+  val localMemory  = Array.tabulate(outputMemSize)( i => (i - localMemSize/2)%maxLocalData)
 
   // Checking DUT parameters
   if (dut.getChannels != 4)
@@ -51,16 +54,16 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
   expect(dut.io.bus.dmaReady, false.B)      // Initially the DMA is not ready with read info
   expect(dut.io.ctrl.done, true.B)           // But it is ready to receive config from Controller
   for (i <- 0 until dut.getChannels) {
-    expect(dut.io.wrAddr(i), i.U)       // Initial wr. address is 0-1-2-3 (in case of 4 channels)
+    expect(dut.io.addr(i), i.U)       // Initial wr. address is 0-1-2-3 (in case of 4 channels)
     expect(dut.io.wrData(i), 0.S)       // Initial wr. data is 0 (on all channels)
   }
   expect(dut.io.wrEn, false.B)          // Initially write is disabled on local mem. ports
   expect(dut.io.memSel, true.B)         // Initially, memory A is selected
 
 
-  // Testing DMA with different configs
-  // ----------------------------------
-  println("[DMATester] Testing DMA with different configs")
+  // Testing DMA loads with different configs
+  // ----------------------------------------
+  println("[DMATester] Testing DMA loads with different configs")
   for (config <- 0 until numOfConfigs) {
 
     if (logConfig) {
@@ -76,11 +79,14 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
     // (to avoid unknown register values)
     poke(dut.io.bus.busDataIn, dummyData.U)
     poke(dut.io.bus.busValid, false.B)
+    poke(dut.io.bus.wrGrant, false.B)
+    poke(dut.io.bus.busReady, false.B)
 
     // Driving inputs from Controller
     poke(dut.io.ctrl.localBaseAddr, (localOffsets(config) % localMemSize).U)
     poke(dut.io.ctrl.busBaseAddr, sysMemOffsets(config).U)
     poke(dut.io.ctrl.burstLen, burstLengths(config).U)
+    poke(dut.io.ctrl.rdWrN, true.B)
     poke(dut.io.ctrl.sel, targetMemIsA(config).B)
     poke(dut.io.ctrl.start, true.B)
 
@@ -95,7 +101,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
     // - Local memory interface:
     expect(dut.io.memSel, targetMemIsA(config).B)
     for (ch <- 0 until dut.getChannels) {
-      expect(dut.io.wrAddr(ch), ((localOffsets(config) + ch) % localMemSize).U)
+      expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
       expect(dut.io.wrData(ch), split(dummyData, MSBs(ch), LSBs(ch)).S)
     }
     // - Controller interface:
@@ -135,7 +141,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         expect(dut.io.memSel, targetMemIsA(config).B)
         expect(dut.io.wrEn, false.B)  // Bus data is not valid yet
         for (ch <- 0 until dut.getChannels) {
-          expect(dut.io.wrAddr(ch), ((localOffsets(config) + ch) % localMemSize).U)
+          expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
           expect(dut.io.wrData(ch), split(dummyData, MSBs(ch), LSBs(ch)).S)
         }
         // - Controller interface:
@@ -155,7 +161,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
           expect(dut.io.memSel, targetMemIsA(config).B)
           expect(dut.io.wrEn, false.B)  // Bus data is not valid yet
           for (ch <- 0 until dut.getChannels) {
-            expect(dut.io.wrAddr(ch), ((localOffsets(config) + ch) % localMemSize).U)
+            expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
             expect(dut.io.wrData(ch), split(dummyData, MSBs(ch), LSBs(ch)).S)
           }
           // - Controller interface:
@@ -187,7 +193,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
           expect(dut.io.memSel, targetMemIsA(config).B)
           expect(dut.io.wrEn, true.B)
           for (ch <- 0 until dut.getChannels) {
-            expect(dut.io.wrAddr(ch), ((localOffsets(config) + cycle*4 + ch) % localMemSize).U)
+            expect(dut.io.addr(ch), ((localOffsets(config) + cycle*4 + ch) % localMemSize).U)
             expect(dut.io.wrData(ch), split(systemMemory(address), MSBs(ch), LSBs(ch)).S)
           }
         }
@@ -210,9 +216,204 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
   }
 
 
+  // Testing DMA stores with different configs
+  // -----------------------------------------
+  println("[DMATester] Testing DMA stores with different configs")
+
+  for (config <- 0 until 1) {  //numOfConfigs) {
+
+    if (logConfig) {
+      println("[DMATester] Active config is:")
+      println("[DMATester]   sys. mem. offset : " + sysMemOffsets(config))
+      println("[DMATester]   bus delay        : " + busDelays(config))
+      println("[DMATester]   local offset     : " + localOffsets(config))
+      println("[DMATester]   burst length     : " + burstLengths(config))
+      println("[DMATester]   target mem. is A : " + targetMemIsA(config))
+    }
+
+    // Driving inputs from bus interface
+    // (to avoid unknown register values)
+    poke(dut.io.bus.busDataIn, dummyData.U)
+    poke(dut.io.bus.busValid, false.B)
+    poke(dut.io.bus.wrGrant, false.B)
+    poke(dut.io.bus.busReady, false.B)
+
+    // Driving inputs from Controller
+    poke(dut.io.ctrl.localBaseAddr, (localOffsets(config) % localMemSize).U)
+    poke(dut.io.ctrl.busBaseAddr, sysMemOffsets(config).U)
+    poke(dut.io.ctrl.burstLen, burstLengths(config).U)
+    poke(dut.io.ctrl.rdWrN, false.B)
+    poke(dut.io.ctrl.sel, targetMemIsA(config).B)  // Not used for stores
+    poke(dut.io.ctrl.start, true.B)
+
+    step(1)
+    poke(dut.io.ctrl.start, false.B)
+
+    // Outputs driven from internal registers
+    // are expected to have new values now
+    // - Bus interface:
+    expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
+    expect(dut.io.bus.busBurstLen, burstLengths(config).U)
+    expect(dut.io.bus.busRdWrN, false.B)   // Always reading
+    // - Local memory interface:
+    expect(dut.io.memSel, targetMemIsA(config).B)  // Not used for stores
+    for (ch <- 0 until dut.getChannels) {
+      expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
+      expect(dut.io.wrData(ch), split(dummyData, MSBs(ch), LSBs(ch)).S)
+    }
+    // - Controller interface:
+    expect(dut.io.ctrl.done, false.B)
+
+    // But some other values should not be changed yet
+    // - Bus interface:
+    expect(dut.io.bus.wrRequest, false.B)  // Not yet
+    expect(dut.io.bus.dmaValid, false.B)   // Data is not valid yet
+    expect(dut.io.bus.dmaReady, false.B)   // Should remain this way for stores
+    // - Local memory interface
+    expect(dut.io.wrEn, false.B)           // Should remain this way for stores
+
+    step(1)
+
+    // DMA is just after it's "check" state
+    // where it does nothing but checks the burst length
+    // But at this point, testing has two possible ways to go
+    breakable {
+      if (burstLengths(config) == 0) {
+        expect(dut.io.bus.dmaReady, false.B)
+
+        // In this case, the DMA goes back to it's initial state
+        step(1)
+        expect(dut.io.ctrl.done, true.B)
+        break // We can start testing with the next config
+      } else {
+
+        // If burst length is not 0, DMA should assert it's write request signal
+        expect(dut.io.bus.wrRequest, true.B)
+
+        // Other signals do not change
+        // - Bus interface:
+        expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
+        expect(dut.io.bus.busBurstLen, burstLengths(config).U)
+        expect(dut.io.bus.busRdWrN, false.B)  // Should remain this way for stores
+        expect(dut.io.bus.dmaReady, false.B)  // Should remain this way for stores
+        expect(dut.io.bus.dmaValid, false.B)  // Write grant not arrived yet
+        // - Local memory interface:
+        expect(dut.io.wrEn, false.B)          // Should remain this way for stores
+        for (ch <- 0 until dut.getChannels) {
+          expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
+          expect(dut.io.wrData(ch), split(dummyData, MSBs(ch), LSBs(ch)).S)
+        }
+        // - Controller interface:
+        expect(dut.io.ctrl.done, false.B)
+
+        // DMA is frozen until bus signals write grant
+        for (_ <- 0 until busDelays(config)) {
+          step(1)
+          expect(dut.io.bus.wrRequest, true.B)
+
+          // - Bus interface:
+          expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
+          expect(dut.io.bus.busBurstLen, burstLengths(config).U)
+          expect(dut.io.bus.busRdWrN, false.B)  // Should remain this way for stores
+          expect(dut.io.bus.dmaReady, false.B)  // Should remain this way for stores
+          expect(dut.io.bus.dmaValid, false.B)  // Write grant not arrived yet
+          // - Local memory interface:
+          expect(dut.io.wrEn, false.B) // Should remain this way for stores
+          for (ch <- 0 until dut.getChannels) {
+            expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
+            expect(dut.io.wrData(ch), split(dummyData, MSBs(ch), LSBs(ch)).S)
+          }
+          // - Controller interface:
+          expect(dut.io.ctrl.done, false.B)
+        }
+
+        // Driving write grant and bus ready
+        poke(dut.io.bus.wrGrant, true.B)
+        poke(dut.io.bus.busReady, true.B)
+        step(1)
+        for (cycle <- -1 until burstLengths(config)) {
+
+          // DMA holds write request high until the burst ends
+          expect(dut.io.bus.wrRequest, true.B)
+
+          // Dropping busReady signal for a while mid-burst
+          if (cycle == 9) poke(dut.io.bus.busReady, false.B)
+          if (cycle == 10) {
+            // And holding it down for 5 clock cycles
+            // Expecting that everything remains the same
+            for (_ <- 0 until 5) {
+              expect(dut.io.state, dut.write)
+              for (ch <- 0 until dut.getChannels) {
+                expect(dut.io.addr(ch), ((localOffsets(config) + cycle * 4 + ch) % localMemSize).U)
+              }
+              expect(dut.io.bus.dmaValid, true.B)
+              expect(dut.io.ctrl.done, false.B)
+              step(1)
+            }
+            poke(dut.io.bus.busReady, true.B)
+            step(1)
+          }
+
+          // Expecting read address to start from localBaseAddr, stepping 4 at a time
+          if (cycle < 0) {
+            expect(dut.io.state, dut.request)
+            for (ch <- 0 until dut.getChannels) {
+              expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
+            }
+          } else {
+            expect(dut.io.state, dut.write)
+            for (ch <- 0 until dut.getChannels) {
+              expect(dut.io.addr(ch), ((localOffsets(config) + cycle*4 + ch) % localMemSize).U)
+            }
+          }
+
+          val readAddresses = Array.fill(dmaChannels) { 0 }
+          for (ch <- 0 until dmaChannels)
+            readAddresses(ch) = peek(dut.io.addr(ch)).toInt
+
+          step(1)
+
+          expect(dut.io.state, dut.write)
+          expect(dut.io.bus.dmaValid, !(cycle < 0))
+
+          // Emulating read from local memory
+          for (ch <- 0 until dmaChannels) {
+            poke(dut.io.rdData(ch), localMemory(readAddresses(ch)).S)
+          }
+
+          // Expecting DMA not to be done until the end of burst
+          // Expecting merged data word on bus interface
+          expect(dut.io.ctrl.done, false.B)
+          var busData: BigInt = toByte(localMemory(readAddresses(dmaChannels-1)))
+          for (ch <- dmaChannels-2 to 0 by -1) {
+            busData = busData << dut.getLocalDataW
+            busData += toByte(localMemory(readAddresses(ch)))
+          }
+          expect(dut.io.bus.busDataOut, busData)
+        }
+
+        // Expecting
+        // - done to be asserted,
+        // - DMA ready to be deasserted
+        // - and write enable to be inactive
+        // after the last cycle of the burst write
+        step(1)
+        expect(dut.io.ctrl.done, true.B)
+        expect(dut.io.bus.wrRequest, false.B)
+        expect(dut.io.bus.dmaValid, false.B)
+
+        // And now everything is inactive, DMA is waiting
+        // for the next start signal
+
+      }
+    }
+  }
+
+
   // Helper functions
   def split(data: Int, msb: Int, lsb: Int): Int = {
     if (lsb > msb) throw new IllegalArgumentException("LSB cannot be larger than MSB!")
     (data >> lsb) % (1 << msb)
   }
+  def toByte(in: Int) = in.toChar.toInt % 256
 }
