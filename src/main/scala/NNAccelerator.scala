@@ -35,43 +35,65 @@ class NNAccelerator extends Module {
     // - Output checking
     val wrData = Output(Vec(dmaChannels, baseType))
     val mac  = Output(Vec(gridSize, accuType))
+    val vld = Output(Bool())
   })
 
   // Submodules
   val dma          = Module(new DMA)
-  val localMemoryA = Module(new LocalMemory)
-  val localMemoryB = Module(new LocalMemory)
+  val localMemoryA = Module(new LocalMemory(flippedInterface = false))
+  val localMemoryB = Module(new LocalMemory(flippedInterface = false))
   val loadUnit     = Module(new LoadUnit)
   val computeUnit  = Module(new ArithmeticGrid)
+  val outputMemory = Module(new LocalMemory(flippedInterface = true))
 
   // Connecting DMA to external test interface
   dma.io.bus <> io.bus
   dma.io.ctrl <> io.ctrl
 
   // Connecting memories to DMA
-  localMemoryA.io.wrAddr := dma.io.wrAddr
-  localMemoryA.io.wrData := dma.io.wrData
+  localMemoryA.io.dmaAddr := dma.io.wrAddr
+  localMemoryA.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
   io.wrData := dma.io.wrData
-  localMemoryA.io.wrEn   := (dma.io.memSel && dma.io.wrEn)
-  localMemoryB.io.wrAddr := dma.io.wrAddr
-  localMemoryB.io.wrData := dma.io.wrData
-  localMemoryB.io.wrEn   := (!dma.io.memSel && dma.io.wrEn)
+  localMemoryA.io.dmaWrEn := (dma.io.memSel && dma.io.wrEn)
+  localMemoryB.io.dmaAddr := dma.io.wrAddr
+  localMemoryB.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
+  localMemoryB.io.dmaWrEn := (!dma.io.memSel && dma.io.wrEn)
+  localMemoryA.io.agWrEn := false.B
+  localMemoryB.io.agWrEn := false.B
 
   // Connecting "load enable" control signal to load unit
   loadUnit.io.en := io.ldEn
 
   // Local memory addressing
-  localMemoryA.io.rdAddr := loadUnit.io.addrA
-  localMemoryB.io.rdAddr := loadUnit.io.addrB
+  localMemoryA.io.agAddr := loadUnit.io.addrA
+  localMemoryB.io.agAddr := loadUnit.io.addrB
 
   // Connecting the compute unit
-  computeUnit.io.opA := localMemoryA.io.rdData
-  computeUnit.io.opB := localMemoryB.io.rdData
+  computeUnit.io.opA := localMemoryA.io.agData.asInstanceOf[Vec[UInt]]
+  computeUnit.io.opB := localMemoryB.io.agData.asInstanceOf[Vec[UInt]]
   computeUnit.io.en  := loadUnit.io.auEn
   computeUnit.io.clr := loadUnit.io.auClr
 
   // Outputting accumulator value for testing
   io.mac := computeUnit.io.mac
+  io.vld := computeUnit.io.vld
+
+  // Register to store address for output memory
+  // Write address for output memory is what was
+  // the first address for input memory
+  val outWrAddrReg = RegInit(0.U(localAddrWidth.W))
+  when (loadUnit.io.auClr) {
+    outWrAddrReg := loadUnit.io.addrA
+  }
+
+  // Storing accumulator values into output memory
+  outputMemory.io.agAddr := outWrAddrReg
+  outputMemory.io.agData := computeUnit.io.mac
+  outputMemory.io.agWrEn := computeUnit.io.vld
+  for (i <- 0 until dmaChannels) {
+    outputMemory.io.dmaAddr(i) := 0.U
+  }
+  outputMemory.io.dmaWrEn := false.B
 
 
   // Helper functions
