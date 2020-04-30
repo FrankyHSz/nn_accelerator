@@ -3,21 +3,26 @@ package memory
 import chisel3._
 import _root_.arithmetic.baseType
 import _root_.util.BarrelShifter
+// import chisel3.util.Mux1H
 
-class LocalMemory extends Module {
+class LocalMemory(flippedInterface: Boolean) extends Module {
 
   val numberOfBanks = 1 << bankAddrWidth
+
+  def dirDma(T: Data) = if (flippedInterface) Output(T) else Input(T)
+  def dirAg(T: Data)  = if (flippedInterface) Input(T)  else Output(T)
 
   val io = IO(new Bundle() {
 
     // DMA interface
-    val wrAddr = Input(Vec(dmaChannels, UInt(localAddrWidth.W)))
-    val wrData = Input(Vec(dmaChannels, baseType))
-    val wrEn   = Input(Bool())
+    val dmaAddr = Input(Vec(dmaChannels, UInt(localAddrWidth.W)))
+    val dmaData = dirDma(Vec(dmaChannels, baseType))
+    val dmaWrEn = Input(Bool())
 
     // Arithmetic Grid interface
-    val rdAddr = Input(UInt(localAddrWidth.W))
-    val rdData = Output(Vec(numberOfBanks, baseType))
+    val agAddr = Input(UInt(localAddrWidth.W))
+    val agData = dirAg(Vec(numberOfBanks, baseType))
+    val agWrEn = Input(Bool())
   })
 
   // Generating memory banks
@@ -26,7 +31,7 @@ class LocalMemory extends Module {
   })
 
   // Generating barrel shifter to connect banks to output ports
-  val outputConnect = Module(new BarrelShifter(numberOfBanks, baseType, pipelined = false))
+  val vectorConnect = Module(new BarrelShifter(numberOfBanks, baseType, pipelined = false))
 
   // Connecting memory banks
   // Banks are addressed with the upper half of read/write address,
@@ -35,40 +40,93 @@ class LocalMemory extends Module {
   // bandwidth for sequential reading.
   for (i <- 0 until numberOfBanks) {
 
-    // Connecting DMA interface
-    memBanks(i).wrAddr := io.wrAddr(i%dmaChannels)(localAddrWidth - 1, bankAddrWidth)
-    memBanks(i).wrData := io.wrData(i%dmaChannels)
+    // Connecting write interface
+    if (flippedInterface) {
+      memBanks(i).wrAddr := io.agAddr(localAddrWidth - 1, bankAddrWidth)
+      if (bankAddrWidth == 0)
+        memBanks(0).wrData := io.agData.asInstanceOf[Vec[UInt]](0)
+      else {
+        memBanks(i).wrData := vectorConnect.io.out(numberOfBanks-1-i)
+      }
+    } else {
+      memBanks(i).wrAddr := io.dmaAddr(i%dmaChannels)(localAddrWidth - 1, bankAddrWidth)
+      memBanks(i).wrData := io.dmaData.asInstanceOf[Vec[UInt]](i%dmaChannels)
+    }
     if (bankAddrWidth == 0)
-      memBanks(0).wrEn   := io.wrEn
-    else
-      memBanks(i).wrEn   := (io.wrAddr(i%dmaChannels)(bankAddrWidth - 1, 0) === i.U) && io.wrEn
+      if (flippedInterface)
+        memBanks(0).wrEn := io.agWrEn
+      else
+        memBanks(0).wrEn := io.dmaWrEn
+    else {
+      if (flippedInterface) {
+        memBanks(i).wrEn := io.agWrEn
+      } else {
+        val thisBankIsSelected = (io.dmaAddr(i%dmaChannels)(bankAddrWidth - 1, 0) === i.U)
+        memBanks(i).wrEn := thisBankIsSelected && io.dmaWrEn
+      }
+    }
 
-    // Connecting Arithmetic Grid interface
+    // Connecting read interface
     // - Hardware support for unaligned read
     if (bankAddrWidth == 0)
-      memBanks(0).rdAddr := io.rdAddr
-    else
-      memBanks(i).rdAddr := Mux(
-        io.rdAddr(bankAddrWidth - 1, 0) > i.U,      // If the offset is greater than index of this bank
-        io.rdAddr(localAddrWidth - 1, bankAddrWidth) + 1.U,  // then this banks should provide value from next row
-        io.rdAddr(localAddrWidth - 1, bankAddrWidth)         // otherwise it provide data as requested
-      )
-    // - Connecting output of memory banks to barrel shifter
-    if (bankAddrWidth != 0) outputConnect.io.in(i) := memBanks(i).rdData
+      if (flippedInterface)
+        memBanks(0).rdAddr := io.dmaAddr
+      else
+        memBanks(0).rdAddr := io.agAddr
+    else {
+      if (flippedInterface) {
+        memBanks(i).rdAddr := io.dmaAddr(i%dmaChannels)(localAddrWidth-1, bankAddrWidth)
+      } else {
+        // If the offset is greater than index of this bank
+        // then this banks should provide value from next row
+        // otherwise it provide data as requested
+        memBanks(i).rdAddr := Mux(
+          io.agAddr(bankAddrWidth - 1, 0) > i.U,
+          io.agAddr(localAddrWidth - 1, bankAddrWidth) + 1.U,
+          io.agAddr(localAddrWidth - 1, bankAddrWidth)
+        )
+      }
+    }
+    if (flippedInterface) {
+      // - Connecting output of arithmetic units to barrel shifter
+      if (bankAddrWidth != 0) vectorConnect.io.in(numberOfBanks-1-i) := io.agData.asInstanceOf[Vec[UInt]](i)
+    } else {
+      // - Connecting output of memory banks to barrel shifter
+      if (bankAddrWidth != 0) vectorConnect.io.in(i) := memBanks(i).rdData
+    }
   }
 
   if (bankAddrWidth == 0) {
-    io.rdData(0) := memBanks(0).rdData
+    if (flippedInterface)
+      io.dmaData.asInstanceOf[Vec[UInt]](0) := memBanks(0).rdData
+    else
+      io.agData.asInstanceOf[Vec[UInt]](0) := memBanks(0).rdData
     // Unused interconnect
-    outputConnect.io.in(0) := 0.U
-    outputConnect.io.sh    := 0.U
+    vectorConnect.io.in(0) := 0.U
+    vectorConnect.io.sh    := 0.U
   } else {
-    // Connecting barrel shifter to module output
-    outputConnect.io.sh := io.rdAddr(bankAddrWidth - 1, 0)
-    io.rdData := outputConnect.io.out
+    if (flippedInterface) {
+      vectorConnect.io.sh := io.agAddr
+      for (ch <- 0 until dmaChannels) {
+        // Building multiplexer-trees for each DMA port
+        val selector = Wire(Vec(numberOfBanks/dmaChannels, Bool()))
+        val dataVec  = Wire(Vec(numberOfBanks/dmaChannels, baseType))
+        for (i <- 0 until numberOfBanks/dmaChannels) {
+          selector(i) := (io.dmaAddr(ch)(bankAddrWidth-1, 0) === (i*dmaChannels + ch).U)
+          dataVec(i)  := memBanks(i*dmaChannels + ch).rdData
+        }
+        val muxOut = util.Mux1H(selector, dataVec)
+        io.dmaData.asInstanceOf[Vec[UInt]](ch) := muxOut
+      }
+    } else {
+      // Connecting barrel shifter to module output
+      vectorConnect.io.sh := io.agAddr(bankAddrWidth - 1, 0)
+      io.agData := vectorConnect.io.out
+    }
   }
 
   def getAddrW = localAddrWidth
   def getBankAddrW = bankAddrWidth
   def getDataW = baseType.getWidth
+  def ifFlipped = flippedInterface
 }

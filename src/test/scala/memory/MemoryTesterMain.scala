@@ -14,7 +14,14 @@ object MemoryTesterMain extends App {
   }
 
   if (testAll || args(0) == "testLocalMem") {
-    iotesters.Driver.execute(args, () => new LocalMemory) {
+
+    println("Testing LocalMemory with non-flipped interface (DMA write, AG read)")
+    iotesters.Driver.execute(args, () => new LocalMemory(flippedInterface = false)) {
+      c => new LocalMemoryTester(c)
+    }
+
+    println("Testing LocalMemory with flipped interface (DMA read, AG write)")
+    iotesters.Driver.execute(args, () => new LocalMemory(flippedInterface = true)) {
       c => new LocalMemoryTester(c)
     }
   }
