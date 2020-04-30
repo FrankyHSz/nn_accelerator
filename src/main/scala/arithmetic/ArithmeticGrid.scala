@@ -9,6 +9,7 @@ class ArithmeticGrid extends Module {
     val en  = Input(Bool())
     val clr = Input(Bool())
     val mac = Output(Vec(gridSize, accuType))
+    val vld = Output(Bool())
   })
 
   // Generating arithmetic units
@@ -24,6 +25,15 @@ class ArithmeticGrid extends Module {
     arithmeticUnits(i).clr := io.clr
     io.mac(i) := arithmeticUnits(i).mac
   }
+
+  // Signaling if accumulators are holding valid data
+  // which is right before clearing them
+  val len = ArithmeticUnit.getDelay - 1
+  val clrDelay = Reg(Vec(len, Bool()))
+  for (i <- len-1 to 1 by -1)
+    clrDelay(i) := clrDelay(i-1)
+  clrDelay(0) := io.clr
+  io.vld := clrDelay(len-1)
 
   // Helper functions
   def getN = gridSize

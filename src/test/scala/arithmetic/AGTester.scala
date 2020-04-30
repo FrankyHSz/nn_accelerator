@@ -47,6 +47,7 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
         accu(k) += inputsA(delayedInputIdx) * inputsB(delayedInputIdx)
       }
     }
+    expect(dut.io.vld, false)
     // Stepping forward one clock cycle
     step(1)
 
@@ -93,8 +94,10 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
         if ((t-dut.getDelay) % 128 == 0) accu(k) = inputsA(delayedInputIdx) * inputsB(delayedInputIdx)
         else accu(k) += inputsA(delayedInputIdx) * inputsB(delayedInputIdx)
         expect(dut.io.mac(k), accu(k))
+        expect(dut.io.vld, ((t-dut.getDelay)%128 == 127))
       }
     }
+    if (t == 2) expect(dut.io.vld, true)
     // Stepping forward one clock cycle
     step(1)
 
