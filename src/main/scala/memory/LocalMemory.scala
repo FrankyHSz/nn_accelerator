@@ -5,9 +5,9 @@ import _root_.arithmetic.baseType
 import _root_.util.BarrelShifter
 // import chisel3.util.Mux1H
 
-class LocalMemory(flippedInterface: Boolean) extends Module {
+class LocalMemory(banked: Boolean, flippedInterface: Boolean) extends Module {
 
-  val numberOfBanks = 1 << bankAddrWidth
+  val numberOfBanks = if (banked) 1 << bankAddrWidth else 1
 
   def dirDma(T: Data) = if (flippedInterface) Output(T) else Input(T)
   def dirAg(T: Data)  = if (flippedInterface) Input(T)  else Output(T)
@@ -42,17 +42,23 @@ class LocalMemory(flippedInterface: Boolean) extends Module {
 
     // Connecting write interface
     if (flippedInterface) {
-      memBanks(i).wrAddr := io.agAddr(localAddrWidth - 1, bankAddrWidth)
-      if (bankAddrWidth == 0)
+      if (!banked) {
+        memBanks(0).wrAddr := io.agAddr(localAddrWidth - 1, 0)
         memBanks(0).wrData := io.agData.asInstanceOf[Vec[UInt]](0)
-      else {
+      } else {
+        memBanks(i).wrAddr := io.agAddr(localAddrWidth - 1, bankAddrWidth)
         memBanks(i).wrData := vectorConnect.io.out(numberOfBanks-1-i)
       }
     } else {
-      memBanks(i).wrAddr := io.dmaAddr(i%dmaChannels)(localAddrWidth - 1, bankAddrWidth)
-      memBanks(i).wrData := io.dmaData.asInstanceOf[Vec[UInt]](i%dmaChannels)
+      if (!banked) {
+        memBanks(0).wrAddr := io.dmaAddr(0)(localAddrWidth - 1, 0)
+        memBanks(0).wrData := io.dmaData.asInstanceOf[Vec[UInt]](0)
+      } else {
+        memBanks(i).wrAddr := io.dmaAddr(i%dmaChannels)(localAddrWidth - 1, bankAddrWidth)
+        memBanks(i).wrData := io.dmaData.asInstanceOf[Vec[UInt]](i%dmaChannels)
+      }
     }
-    if (bankAddrWidth == 0)
+    if (!banked)
       if (flippedInterface)
         memBanks(0).wrEn := io.agWrEn
       else
@@ -68,9 +74,9 @@ class LocalMemory(flippedInterface: Boolean) extends Module {
 
     // Connecting read interface
     // - Hardware support for unaligned read
-    if (bankAddrWidth == 0)
+    if (!banked)
       if (flippedInterface)
-        memBanks(0).rdAddr := io.dmaAddr
+        memBanks(0).rdAddr := io.dmaAddr(0)
       else
         memBanks(0).rdAddr := io.agAddr
     else {
@@ -96,13 +102,17 @@ class LocalMemory(flippedInterface: Boolean) extends Module {
     }
   }
 
-  if (bankAddrWidth == 0) {
-    if (flippedInterface)
+  if (!banked) {
+    if (flippedInterface) {
       io.dmaData.asInstanceOf[Vec[UInt]](0) := memBanks(0).rdData
-    else
+      io.dmaData.asInstanceOf[Vec[UInt]](1) := 0.S
+      io.dmaData.asInstanceOf[Vec[UInt]](2) := 0.S
+      io.dmaData.asInstanceOf[Vec[UInt]](3) := 0.S
+    } else {
       io.agData.asInstanceOf[Vec[UInt]](0) := memBanks(0).rdData
+    }
     // Unused interconnect
-    vectorConnect.io.in(0) := 0.U
+    vectorConnect.io.in(0) := 0.S
     vectorConnect.io.sh    := 0.U
   } else {
     if (flippedInterface) {
@@ -126,7 +136,7 @@ class LocalMemory(flippedInterface: Boolean) extends Module {
   }
 
   def getAddrW = localAddrWidth
-  def getBankAddrW = bankAddrWidth
+  def getBankAddrW = if (banked) bankAddrWidth else 0
   def getDataW = baseType.getWidth
   def ifFlipped = flippedInterface
 }

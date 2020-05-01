@@ -14,7 +14,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
   val maxData = 1 << (dut.getDataW-1)
 
   // Tests to run
-  val burst_test = true
+  val burst_test = (numberOfBanks != 1)
   val bank_test  = true
 
   poke(dut.io.dmaWrEn, false.B)
@@ -152,12 +152,13 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
     // Reading back contents of only one, randomly selected bank
     println("[LocalMemoryTester] Write-and-read-back test for only one bank at a time")
 
+    val tests = if (numberOfBanks != 1) 3 else 1
     val tenPercentBank = maxAddressSingleBank / 10
     val onePercentBank = maxAddressSingleBank / 100
 
     if (dut.ifFlipped) {
 
-      for (_ <- 1 to 3) {
+      for (_ <- 1 to tests) {
         val randomBankIndex = Random.nextInt(numberOfBanks)
         println("Bank index: " + randomBankIndex.toString)
 
@@ -173,7 +174,7 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
           // Read address = i * nBanks + offset
           // should be the same as write address = {i, bankIdx}
           poke(dut.io.agWrEn, false.B)
-          val chIdx = catAddress % dmaChannels
+          val chIdx = if (numberOfBanks != 1) catAddress % dmaChannels else 0
           poke(dut.io.dmaAddr(chIdx), ((randomBankIndex + i * numberOfBanks) % maxAddress).U)
           step(1)
           expect(dut.io.dmaData.asInstanceOf[Vec[UInt]](chIdx), (i - maxAddressSingleBank / 2))
@@ -187,14 +188,14 @@ class LocalMemoryTester(dut: LocalMemory) extends PeekPokeTester(dut) {
 
     } else {
 
-      for (_ <- 1 to 3) {
+      for (_ <- 1 to tests) {
         val randomBankIndex = Random.nextInt(numberOfBanks)
         println("Bank index: " + randomBankIndex.toString)
         for (i <- 0 until maxAddressSingleBank) {
 
           // Write address = {i, bankIdx}
           val catAddress = (i << dut.getBankAddrW) + randomBankIndex
-          val chIdx = catAddress % dmaChannels
+          val chIdx = if (numberOfBanks != 1) catAddress % dmaChannels else 0
           poke(dut.io.dmaAddr(chIdx), catAddress.U)
           poke(dut.io.dmaData.asInstanceOf[Vec[UInt]](chIdx), (i - maxAddressSingleBank / 2).S)
           poke(dut.io.dmaWrEn, true.B)

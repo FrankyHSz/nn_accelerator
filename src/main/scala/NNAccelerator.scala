@@ -40,22 +40,22 @@ class NNAccelerator extends Module {
 
   // Submodules
   val dma          = Module(new DMA)
-  val localMemoryA = Module(new LocalMemory(flippedInterface = false))
-  val localMemoryB = Module(new LocalMemory(flippedInterface = false))
+  val localMemoryA = Module(new LocalMemory(banked = false, flippedInterface = false))
+  val localMemoryB = Module(new LocalMemory(banked = true, flippedInterface = false))
   val loadUnit     = Module(new LoadUnit)
   val computeUnit  = Module(new ArithmeticGrid)
-  val outputMemory = Module(new LocalMemory(flippedInterface = true))
+  val outputMemory = Module(new LocalMemory(banked = true, flippedInterface = true))
 
   // Connecting DMA to external test interface
   dma.io.bus <> io.bus
   dma.io.ctrl <> io.ctrl
 
   // Connecting memories to DMA
-  localMemoryA.io.dmaAddr := dma.io.wrAddr
+  localMemoryA.io.dmaAddr := dma.io.addr
   localMemoryA.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
   io.wrData := dma.io.wrData
   localMemoryA.io.dmaWrEn := (dma.io.memSel && dma.io.wrEn)
-  localMemoryB.io.dmaAddr := dma.io.wrAddr
+  localMemoryB.io.dmaAddr := dma.io.addr
   localMemoryB.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
   localMemoryB.io.dmaWrEn := (!dma.io.memSel && dma.io.wrEn)
   localMemoryA.io.agWrEn := false.B

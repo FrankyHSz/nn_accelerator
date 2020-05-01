@@ -15,13 +15,31 @@ object MemoryTesterMain extends App {
 
   if (testAll || args(0) == "testLocalMem") {
 
-    println("Testing LocalMemory with non-flipped interface (DMA write, AG read)")
-    iotesters.Driver.execute(args, () => new LocalMemory(flippedInterface = false)) {
+    println("--------------------------------------------------------------------------")
+    println("Testing banked LocalMemory with non-flipped interface (DMA write, AG read)")
+    println("--------------------------------------------------------------------------")
+    iotesters.Driver.execute(args, () => new LocalMemory(banked = true, flippedInterface = false)) {
       c => new LocalMemoryTester(c)
     }
 
-    println("Testing LocalMemory with flipped interface (DMA read, AG write)")
-    iotesters.Driver.execute(args, () => new LocalMemory(flippedInterface = true)) {
+    println("----------------------------------------------------------------------")
+    println("Testing banked LocalMemory with flipped interface (DMA read, AG write)")
+    println("----------------------------------------------------------------------")
+    iotesters.Driver.execute(args, () => new LocalMemory(banked = true, flippedInterface = true)) {
+      c => new LocalMemoryTester(c)
+    }
+
+    println("------------------------------------------------------------------------------")
+    println("Testing non-banked LocalMemory with non-flipped interface (DMA write, AG read)")
+    println("------------------------------------------------------------------------------")
+    iotesters.Driver.execute(args, () => new LocalMemory(banked = false, flippedInterface = false)) {
+      c => new LocalMemoryTester(c)
+    }
+
+    println("--------------------------------------------------------------------------")
+    println("Testing non-banked LocalMemory with flipped interface (DMA read, AG write)")
+    println("--------------------------------------------------------------------------")
+    iotesters.Driver.execute(args, () => new LocalMemory(banked = false, flippedInterface = true)) {
       c => new LocalMemoryTester(c)
     }
   }
