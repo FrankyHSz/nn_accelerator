@@ -1,6 +1,7 @@
 package ocp
 
 import chisel3._
+import chisel3.util.{Enum, log2Up}
 
 class BusInterface extends Module {
 
@@ -10,7 +11,8 @@ class BusInterface extends Module {
   val io = IO(new Bundle() {
 
     // Port towards OCP bus
-    val ocpSlave = new OcpCoreSlavePort(addrWidth = addrWidth, dataWidth = dataWidth)
+    val ocpSlave = new OcpCoreSlavePort(addrWidth, dataWidth)
+    val ocpMaster = new OcpBurstMasterPort(addrWidth, dataWidth, burstLen)
 
     // Signals from and toward Controller
     // - RD/WR interface for register files
@@ -26,7 +28,16 @@ class BusInterface extends Module {
     val ldSizeSel  = Output(Bool())
 
     // Signals from and toward DMA
-    // ...
+    val busAddr = Input(UInt(addrWidth.W))
+    val busBurstLen = Input(UInt(addrWidth.W))
+    val busDataIn = Output(UInt(dataWidth.W))
+    val busDataOut  = Input(UInt(dataWidth.W))
+    // Handshake signals: Bus -> DMA (read)
+    val busValid = Output(Bool())
+    val dmaReady = Input(Bool())
+    // Handshake signals: DMA -> Bus (write)
+    val dmaValid = Input(Bool())
+    val busReady = Output(Bool())
   })
 
   // Recognizing if this module is addressed or not
@@ -68,8 +79,8 @@ class BusInterface extends Module {
     io.ldSizeSel := true.B
   }
 
-  // Handling RD/WR signals
-  // ----------------------
+  // Handling slave signals (Controller interface)
+  // ---------------------------------------------
   // Propagate address if this module is selected and a read or write operation is requested
   io.addr := 0.U
   when (moduleSelect && (io.ocpSlave.M.Cmd === OcpCmd.WR || io.ocpSlave.M.Cmd === OcpCmd.RD)) {
@@ -98,4 +109,150 @@ class BusInterface extends Module {
   when (RegNext(moduleSelect && io.ocpSlave.M.Cmd === OcpCmd.RD)) {  // Condition signal is delayed
     io.ocpSlave.S.Data := io.rdData                                  // to match with data from registers
   }
+
+  // Handling master signals (DMA interface)
+  // ---------------------------------------
+
+  // Registering burst slave signals
+  val busValidReg = RegNext(io.ocpMaster.S.Resp === OcpResp.DVA)
+  val burstSData = RegNext(io.ocpMaster.S.Data)
+  val burstSCmdAccept  = RegNext(io.ocpMaster.S.CmdAccept)
+  val burstSDataAccept = RegNext(io.ocpMaster.S.DataAccept)
+
+  // Burst master signal registers
+  val burstCmdReg  = RegInit(0.U(3.W))  // IDLE
+  val baseAddress  = RegInit(0.U(addrWidth.W))
+  val nextBaseAddr = RegInit(0.U(addrWidth.W))
+  val burstDataReg = RegInit(0.U(dataWidth.W))
+  val byteEnReg    = RegInit(0.U(4.W))
+  val dataValidReg = RegInit(false.B)
+  val burstCounter = RegInit(0.U(log2Up(burstLen).W))
+
+  // States of burst FSM
+  val idle :: read :: write :: Nil = Enum(3)
+  val stateReg = RegInit(idle)
+
+  // Default values of combinatorial outputs
+  io.busValid := false.B
+  io.busReady := false.B
+
+  // Continue signal: if DMA request a longer burst
+  // that what is supported by the bus, this register
+  // signals if the next RD/WR burst should continue
+  // operation from the address in baseAddress register
+  // or read a new address from the DMA
+  val continue = RegInit(false.B)
+  // printf("Next base address is %d\n", nextBaseAddr)
+  // printf("Continue is %b\n", continue)
+
+  // State machine
+  when (stateReg === idle) {
+
+    // When DMA signals ready while the interface
+    // is IDLE, a read command is issued
+    when (io.dmaReady) {
+      stateReg := read
+      burstCmdReg := OcpCmd.RD
+      baseAddress := Mux(continue, nextBaseAddr, io.busAddr)
+      when (!continue) {
+        nextBaseAddr := io.busAddr
+      }
+
+    // When DMA signals valid while the interface
+    // is IDLE, a write command is issued
+    } .elsewhen (io.dmaValid) {
+      stateReg := write
+      burstCmdReg  := OcpCmd.WR
+      baseAddress  := Mux(continue, nextBaseAddr, io.busAddr)
+      when (!continue) {
+        nextBaseAddr := io.busAddr
+      }
+      burstDataReg := io.busDataOut
+      byteEnReg    := 15.U
+      dataValidReg := true.B
+      when(io.busBurstLen > burstLen.U) {
+        burstCounter := (burstLen - 1).U
+      } .otherwise {
+        burstCounter := io.busBurstLen - 1.U
+      }
+    }
+
+  } .elsewhen (stateReg === read) {
+
+    // When a command is on the bus and the slave signals
+    // that it accepted it, we should go back to IDLE
+    when (io.ocpMaster.S.CmdAccept(0)) {
+      burstCmdReg := OcpCmd.IDLE
+      baseAddress := 0.U
+
+    // When the slave responds with DVA, the received data
+    // can be forwarded to the DMA (no need for counting words)
+    } .elsewhen(io.ocpMaster.S.Resp === OcpResp.DVA) {
+      nextBaseAddr := nextBaseAddr + 1.U
+
+    } .otherwise {
+      stateReg := idle
+      when (io.busBurstLen =/= 0.U) {
+        continue := true.B
+      } .otherwise {
+        continue := false.B
+      }
+    }
+
+  } .elsewhen (stateReg === write) {
+
+    // When a command is on the bus and the slave signals
+    // that it accepted it, we should go back to IDLE
+    when (io.ocpMaster.S.CmdAccept(0)) {
+      burstCmdReg := OcpCmd.IDLE
+      baseAddress := 0.U
+    }
+
+    // When slave signals that it accepted the data
+    // we should provide it with a new one or end burst
+    when (io.ocpMaster.S.DataAccept(0)) {
+      when (burstCounter =/= 0.U) {
+        nextBaseAddr := nextBaseAddr + 1.U
+        burstCounter := burstCounter - 1.U
+        burstDataReg := io.busDataOut
+        byteEnReg    := Mux(io.dmaValid, 15.U, 0.U)
+        dataValidReg := io.dmaValid
+        io.busReady := true.B
+
+      // If burstCounter is 0, the last data word is on bus
+      } .otherwise {
+        nextBaseAddr := nextBaseAddr + 1.U
+        stateReg := idle
+        burstDataReg := 0.U
+        byteEnReg    := 0.U
+        dataValidReg := false.B
+        io.busReady := false.B
+        when (io.busBurstLen =/= 0.U) {
+          continue := true.B
+        } .otherwise {
+          continue := false.B
+        }
+      }
+
+    // Data accept can be low if slave needs some
+    // time mid-burst: hold last data and control
+    // but don't accept new data from DMA
+    } .otherwise {
+      io.busReady := false.B
+    }
+
+  } .otherwise {
+    stateReg := idle
+  }
+
+  // Driving outputs from registers
+  // - OCP bus
+  io.ocpMaster.M.Cmd  := burstCmdReg
+  io.ocpMaster.M.Addr := baseAddress
+  io.ocpMaster.M.Data := burstDataReg
+  io.ocpMaster.M.DataByteEn := byteEnReg
+  io.ocpMaster.M.DataValid  := dataValidReg
+  // - DMA interface
+  io.busValid  := busValidReg
+  io.busDataIn := burstSData
 }
