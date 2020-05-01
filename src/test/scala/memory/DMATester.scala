@@ -79,7 +79,6 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
     // (to avoid unknown register values)
     poke(dut.io.bus.busDataIn, dummyData.U)
     poke(dut.io.bus.busValid, false.B)
-    poke(dut.io.bus.wrGrant, false.B)
     poke(dut.io.bus.busReady, false.B)
 
     // Driving inputs from Controller
@@ -220,7 +219,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
   // -----------------------------------------
   println("[DMATester] Testing DMA stores with different configs")
 
-  for (config <- 0 until 1) {  //numOfConfigs) {
+  for (config <- 0 until numOfConfigs) {
 
     if (logConfig) {
       println("[DMATester] Active config is:")
@@ -235,7 +234,6 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
     // (to avoid unknown register values)
     poke(dut.io.bus.busDataIn, dummyData.U)
     poke(dut.io.bus.busValid, false.B)
-    poke(dut.io.bus.wrGrant, false.B)
     poke(dut.io.bus.busReady, false.B)
 
     // Driving inputs from Controller
@@ -266,7 +264,6 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
 
     // But some other values should not be changed yet
     // - Bus interface:
-    expect(dut.io.bus.wrRequest, false.B)  // Not yet
     expect(dut.io.bus.dmaValid, false.B)   // Data is not valid yet
     expect(dut.io.bus.dmaReady, false.B)   // Should remain this way for stores
     // - Local memory interface
@@ -288,7 +285,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
       } else {
 
         // If burst length is not 0, DMA should assert it's write request signal
-        expect(dut.io.bus.wrRequest, true.B)
+        expect(dut.io.bus.dmaValid, true.B)
 
         // Other signals do not change
         // - Bus interface:
@@ -296,7 +293,6 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         expect(dut.io.bus.busBurstLen, burstLengths(config).U)
         expect(dut.io.bus.busRdWrN, false.B)  // Should remain this way for stores
         expect(dut.io.bus.dmaReady, false.B)  // Should remain this way for stores
-        expect(dut.io.bus.dmaValid, false.B)  // Write grant not arrived yet
         // - Local memory interface:
         expect(dut.io.wrEn, false.B)          // Should remain this way for stores
         for (ch <- 0 until dut.getChannels) {
@@ -306,17 +302,16 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         // - Controller interface:
         expect(dut.io.ctrl.done, false.B)
 
-        // DMA is frozen until bus signals write grant
+        // DMA is frozen until bus signals ready
         for (_ <- 0 until busDelays(config)) {
           step(1)
-          expect(dut.io.bus.wrRequest, true.B)
+          expect(dut.io.bus.dmaValid, true.B)
 
           // - Bus interface:
           expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
           expect(dut.io.bus.busBurstLen, burstLengths(config).U)
           expect(dut.io.bus.busRdWrN, false.B)  // Should remain this way for stores
           expect(dut.io.bus.dmaReady, false.B)  // Should remain this way for stores
-          expect(dut.io.bus.dmaValid, false.B)  // Write grant not arrived yet
           // - Local memory interface:
           expect(dut.io.wrEn, false.B) // Should remain this way for stores
           for (ch <- 0 until dut.getChannels) {
@@ -327,14 +322,13 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
           expect(dut.io.ctrl.done, false.B)
         }
 
-        // Driving write grant and bus ready
-        poke(dut.io.bus.wrGrant, true.B)
+        // Driving bus ready
         poke(dut.io.bus.busReady, true.B)
         step(1)
-        for (cycle <- -1 until burstLengths(config)) {
+        for (cycle <- 0 until burstLengths(config)-1) {
 
-          // DMA holds write request high until the burst ends
-          expect(dut.io.bus.wrRequest, true.B)
+          // DMA holds valid high until the burst ends
+          expect(dut.io.bus.dmaValid, true.B)
 
           // Dropping busReady signal for a while mid-burst
           if (cycle == 9) poke(dut.io.bus.busReady, false.B)
@@ -355,7 +349,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
           }
 
           // Expecting read address to start from localBaseAddr, stepping 4 at a time
-          if (cycle < 0) {
+          if (cycle == 0) {
             expect(dut.io.state, dut.request)
             for (ch <- 0 until dut.getChannels) {
               expect(dut.io.addr(ch), ((localOffsets(config) + ch) % localMemSize).U)
@@ -374,7 +368,6 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
           step(1)
 
           expect(dut.io.state, dut.write)
-          expect(dut.io.bus.dmaValid, !(cycle < 0))
 
           // Emulating read from local memory
           for (ch <- 0 until dmaChannels) {
@@ -398,8 +391,8 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         // - and write enable to be inactive
         // after the last cycle of the burst write
         step(1)
+        expect(dut.io.state, dut.init)
         expect(dut.io.ctrl.done, true.B)
-        expect(dut.io.bus.wrRequest, false.B)
         expect(dut.io.bus.dmaValid, false.B)
 
         // And now everything is inactive, DMA is waiting

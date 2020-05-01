@@ -18,8 +18,6 @@ class DMA extends Module {
       val busValid = Input(Bool())
       val dmaReady = Output(Bool())
       // Handshake signals: DMA -> Bus (write)
-      val wrRequest = Output(Bool())
-      val wrGrant   = Input(Bool())
       val dmaValid = Output(Bool())
       val busReady = Input(Bool())
     }
@@ -63,7 +61,6 @@ class DMA extends Module {
   val rdWrReg     = RegInit(true.B)
   val doneReg     = RegInit(true.B)
   val wrReqReg    = RegInit(false.B)
-  val wrGrantReg  = RegNext(io.bus.wrGrant)
   val dmaReadyReg = RegInit(false.B)
   val busValidReg = RegNext(io.bus.busValid)
   val busReadyReg = RegNext(io.bus.busReady)
@@ -102,7 +99,7 @@ class DMA extends Module {
     } .otherwise {
       stateReg := request
       dmaReadyReg := rdWrReg
-      wrReqReg    := !rdWrReg
+      dmaValidReg := !rdWrReg
     }
   } .elsewhen (stateReg === request) {
     when (rdWrReg && busValidReg) {
@@ -110,8 +107,10 @@ class DMA extends Module {
       burstLenReg := burstLenReg - 1.U
       localAddrReg := localAddrReg + dmaChannels.U
       io.wrEn := true.B
-    } .elsewhen (!rdWrReg && wrGrantReg) {
+    } .elsewhen (!rdWrReg && busReadyReg) {
       stateReg := write
+      burstLenReg := burstLenReg - 1.U
+      localAddrReg := localAddrReg + dmaChannels.U
     }
   }. elsewhen (stateReg === read) {
     when (busValidReg) {
@@ -129,7 +128,7 @@ class DMA extends Module {
     }
   } .elsewhen (stateReg === write) {
     when (busReadyReg) {
-      when (burstLenReg =/= 0.U) {
+      when (burstLenReg > 1.U) {
         burstLenReg := burstLenReg - 1.U
         localAddrReg := localAddrReg + dmaChannels.U
         dmaValidReg := true.B
@@ -155,7 +154,6 @@ class DMA extends Module {
   io.bus.busBurstLen := burstLenReg
   io.bus.dmaReady := dmaReadyReg
   io.bus.busRdWrN := rdWrReg
-  io.bus.wrRequest := wrReqReg
   io.bus.dmaValid := dmaValidReg
 
   // DMA <-> Controller
