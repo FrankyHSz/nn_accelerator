@@ -10,8 +10,10 @@ class LoadUnit extends Module {
     // Control interface
     val en       = Input(Bool())
     val mulConvN = Input(Bool())
-    val sizeA    = Input(UInt(log2Up(gridSize+1).W))
-    val sizeB    = Input(UInt(log2Up(gridSize+1).W))
+    val widthA   = Input(UInt(log2Up(gridSize+1).W))
+    val widthB   = Input(UInt(log2Up(gridSize+1).W))
+    val heightA  = Input(UInt(log2Up(gridSize+1).W))
+    val heightB  = Input(UInt(log2Up(gridSize+1).W))
 
     // Local memory interfaces
     val addrA = Output(UInt(localAddrWidth.W))
@@ -29,27 +31,41 @@ class LoadUnit extends Module {
 
     // Generating addresses for matrix multiplication
     when (io.mulConvN) {
-      addrAReg := addrAReg + 1.U
-      addrBReg := addrBReg + gridSize.U
+      // Checking that indexing does not go outside of matrix A
+      when (addrAReg(localAddrWidth/2-1, 0) === (io.widthA-1.U)) {                  // Last column
+        when (addrAReg(localAddrWidth-1, localAddrWidth/2) === (io.heightA-1.U)) {  // Last row
+          addrAReg := 0.U
+        } .otherwise {
+          addrAReg := addrAReg + gridSize.U - io.widthA + 1.U  // Last column but not last row: next row
+        }
+      } .otherwise {  // Not the last column: next column
+        addrAReg := addrAReg + 1.U
+      }
+      // Checking that indexing does not go outside of matrix B
+      when (addrBReg(localAddrWidth-1, localAddrWidth/2) === (io.heightB-1.U)) {  // Last row
+        addrBReg := 0.U
+      } .otherwise {  // Not the last row: next row
+        addrBReg := addrBReg + gridSize.U
+      }  // Columns are handled by auEn: if width of matrix B is less than gridSize, some AUs are not enabled
 
     // Generating addresses for convolution
     } .otherwise {
       // When reaching the end of the kernel, we reset the address
-      when (addrAReg === (io.sizeA*io.sizeA)-1.U) {
+      when (addrAReg === (io.widthA*io.widthA)-1.U) {
         addrAReg := 0.U
       } .otherwise {
         addrAReg := addrAReg + 1.U
       }
       // When we reach the right edge of image with
       // right edge of kernel then we jump to the next line
-      when (addrAReg === (io.sizeA*io.sizeA)-1.U) {
-        when (addrBReg(localAddrWidth-1, localAddrWidth/2) === (io.sizeB-1.U)) {
+      when (addrAReg === (io.widthA*io.widthA)-1.U) {
+        when (addrBReg(localAddrWidth-1, localAddrWidth/2) === (io.heightB-1.U)) {
           addrBReg := 0.U
         } .otherwise {
-          addrBReg := addrBReg - io.sizeA + 1.U - (io.sizeA - 2.U) * io.sizeB
+          addrBReg := addrBReg - io.widthA + 1.U - (io.widthA - 2.U) * io.widthB
         }
-      } .elsewhen (addrBReg(localAddrWidth/2-1, 0) === (io.sizeA - 1.U)) {
-        addrBReg := addrBReg + io.sizeB - io.sizeA + 1.U
+      } .elsewhen (addrBReg(localAddrWidth/2-1, 0) === (io.widthA - 1.U)) {
+        addrBReg := addrBReg + io.widthB - io.widthA + 1.U
       } .otherwise {
         addrBReg := addrBReg + 1.U
       }
@@ -66,12 +82,12 @@ class LoadUnit extends Module {
 
     // For multiplication, as many AUs are enabled as the width of Matrix B
     when (io.mulConvN) {
-      io.auEn(i) := RegNext(io.en) && RegNext(i.U < io.sizeB)
+      io.auEn(i) := RegNext(io.en) && RegNext(i.U < io.widthB)
 
     // For convolution, as many AUs are enabled
     // as the number of kernels can fit into Matrix B
     } .otherwise {
-      io.auEn(i) := RegNext(io.en) && RegNext(i.U < (io.sizeB - io.sizeA - 1.U))
+      io.auEn(i) := RegNext(io.en) && RegNext(i.U < (io.widthB - io.widthA - 1.U))
     }
   }
 

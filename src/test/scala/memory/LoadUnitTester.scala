@@ -12,8 +12,10 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
   println("[LoadUnit] Testing addresses for matrix multiplication")
   poke(dut.io.en, true.B)
   poke(dut.io.mulConvN, true.B)
-  poke(dut.io.sizeA, n.U)
-  poke(dut.io.sizeB, n.U)
+  poke(dut.io.widthA, n.U)
+  poke(dut.io.widthB, n.U)
+  poke(dut.io.heightA, n.U)
+  poke(dut.io.heightB, n.U)
   step(1)
   for (t <- 0 until 2*maxAddress) {
     expect(dut.io.addrA, t % maxAddress)
@@ -38,8 +40,9 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
     print(kernelSize + " ")
     poke(dut.io.en, true.B)
     poke(dut.io.mulConvN, false.B)
-    poke(dut.io.sizeA, kernelSize.U)
-    poke(dut.io.sizeB, n.U)
+    poke(dut.io.widthA, kernelSize.U)
+    poke(dut.io.widthB, n.U)
+    poke(dut.io.heightB, n.U)
     step(1)
     for (t <- 0 until 2 * ((n-kernelSize) * (n-kernelSize))) {
 
