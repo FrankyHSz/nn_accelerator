@@ -46,12 +46,13 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   val busBaseAddrA = Array(0, 42, 1024)
   val busBaseAddrB = Array(0, 13, 2048)
   val busBaseAddrK = Array(99, 74, 575)
-  val localBaseAddrA = Array(20, 0, 99)
-  val localBaseAddrB = Array(0, 512, 42)
   // localBaseAddrK is always 0
   val burstSizeA = Array(10, 123, 512)
+  val rowSizeA   = Array(5, 1, 4)
   val burstSizeB = Array(9, 131, 256)
-  val burstSizeK = Array(3, 6, 8)
+  val rowSizeB   = Array(3, 1, 8)
+  val burstSizeK = Array(9, 36, 64)
+  val rowSizeK   = Array(3, 6, 8)
   val loadConfigs = 3  // Should match with the size of arrays above
 
   // Emulating DMA
@@ -377,36 +378,25 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     for (i <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(i), false)
     step(1)
-    // - After first clock edge, only ldAValid(0) changes to true
+    // - After clock edge, ldAValid(0) changes to true
     for (i <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(i), (i==0))
-    poke(dut.io.addr, 1.U)
-    poke(dut.io.wrData, localBaseAddrA(0).U)
     step(1)
-    // - After second clock edge, both ldAValid(0) and ldAValid(1) is true but not others
-    for (i <- 0 until dut.getDataW)
-      expect(dut.io.ldAValid(i), (i<2))
     // - Writing the other addresses
     for (i <- 1 until 2*loadConfigs) {
-      poke(dut.io.addr, (2*i).U)
+      poke(dut.io.addr, i.U)
       val busBaseAddress = if (i%2 == 0) busBaseAddrA(i/2) else busBaseAddrB(i/2)
       poke(dut.io.wrData, busBaseAddress.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
-        expect(dut.io.ldAValid(bit), (bit < (2*i+1)))
-      poke(dut.io.addr, (2*i+1).U)
-      val localBaseAddress = if (i%2 == 0) localBaseAddrA(i/2) else localBaseAddrB(i/2)
-      poke(dut.io.wrData, localBaseAddress.U)
-      step(1)
-      for (bit <- 0 until dut.getDataW)
-        expect(dut.io.ldAValid(bit), (bit < (2*i+2)))
+        expect(dut.io.ldAValid(bit), (bit < (i+1)))
     }
     for (i <- 0 until loadConfigs) {
-      poke(dut.io.addr, (2*2*loadConfigs+i).U)
+      poke(dut.io.addr, (2*loadConfigs+i).U)
       poke(dut.io.wrData, busBaseAddrK(i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
-        expect(dut.io.ldAValid(bit), (bit < 2*2*loadConfigs+i+1))
+        expect(dut.io.ldAValid(bit), (bit < 2*loadConfigs+i+1))
     }
     poke(dut.io.ldAddrSel, false.B)
     poke(dut.io.rdWrN, true.B)
@@ -418,19 +408,30 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     poke(dut.io.rdWrN, false.B)
     poke(dut.io.addr, 0.U)
     for (i <- 0 until 2*loadConfigs) {
-      poke(dut.io.addr, i.U)
+      poke(dut.io.addr, (2*i).U)
       val burstLen = if (i%2 == 0) burstSizeA(i/2) else burstSizeB(i/2)
       poke(dut.io.wrData, burstLen.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
-        expect(dut.io.ldSValid(bit), (bit < i+1))
+        expect(dut.io.ldSValid(bit), (bit < 2*i+1))
+      poke(dut.io.addr, (2*i+1).U)
+      val rowLen = if (i%2 == 0) rowSizeA(i/2) else rowSizeB(i/2)
+      poke(dut.io.wrData, rowLen.U)
+      step(1)
+      for (bit <- 0 until dut.getDataW)
+        expect(dut.io.ldSValid(bit), (bit < 2*i+2))
     }
     for (i <- 0 until loadConfigs) {
-      poke(dut.io.addr, (2*loadConfigs+i).U)
+      poke(dut.io.addr, (2*2*loadConfigs+2*i).U)
       poke(dut.io.wrData, burstSizeK(i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
-        expect(dut.io.ldSValid(bit), (bit < 2*loadConfigs+i+1))
+        expect(dut.io.ldSValid(bit), (bit < 2*2*loadConfigs+2*i+1))
+      poke(dut.io.addr, (2*2*loadConfigs+2*i+1).U)
+      poke(dut.io.wrData, rowSizeK(i).U)
+      step(1)
+      for (bit <- 0 until dut.getDataW)
+        expect(dut.io.ldSValid(bit), (bit < 2*2*loadConfigs+2*i+2))
     }
     poke(dut.io.ldSizeSel, false.B)
     poke(dut.io.rdWrN, true.B)
@@ -449,9 +450,9 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.currCommand, loadACmd)  // Current-command register remains the same
     expect(dut.io.cmdPtr, 1.U)            // cmdPtr remains the same
     // - DMA interface is expected to be active
-    expect(dut.io.dma.localBaseAddr, localBaseAddrA(0))
     expect(dut.io.dma.busBaseAddr, busBaseAddrA(0))
     expect(dut.io.dma.burstLen, burstSizeA(0))
+    expect(dut.io.dma.rowLen, rowSizeA(0))
     expect(dut.io.dma.start, true.B)
     poke(dut.io.dma.done, false.B)        // Emulating DMA
     step(1)
@@ -468,11 +469,11 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.stateReg, dut.fetch)    // FSM moved to fetch state after receiving done signal
     expect(dut.io.cmdValid(0), false.B)   // Expecting the first bit of cmdValid to be 0
     expect(dut.io.cmdValid(1), true.B)    // while the following command remains valid
-    expect(dut.io.ldAValid(0), false.B)   // Expecting the first two bits of ldAValid to be 0
-    expect(dut.io.ldAValid(1), false.B)   // while ldAValid(2) is still 1 (only first two bits
-    expect(dut.io.ldAValid(2), true.B)    // got to be invalidated
-    expect(dut.io.ldSValid(0), false.B)   // Expecting the first bit of ldSValid to be 0
-    expect(dut.io.ldSValid(1), true.B)    // while ldSValid(1) is still 1
+    expect(dut.io.ldAValid(0), false.B)   // Expecting the first bit of ldAValid to be 0
+    expect(dut.io.ldAValid(1), true.B)    // while ldAValid(1) is still 1
+    expect(dut.io.ldSValid(0), false.B)   // Expecting the first two bits of ldSValid to be 0
+    expect(dut.io.ldSValid(1), false.B)   // while ldSValid(2) is still 1 (only first two bits
+    expect(dut.io.ldSValid(2), true.B)    // got to be invalidated
     // - This repeats until no valid commands remain
     cmdPtr = 1
     while (toBoolean(peek(dut.io.cmdValid(cmdPtr)), 0)) {
@@ -496,14 +497,6 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       expect(dut.io.currCommand, expCmd)
       expect(dut.io.cmdPtr, cmdPtr.U)
       // - DMA interface is expected to be active
-      var expLocalAddress = 0
-      if (cmdPtr-1 < 2*loadConfigs) {
-        if ((cmdPtr - 1) % 2 == 0)
-          expLocalAddress = localBaseAddrA((cmdPtr - 1) / 2)
-        else
-          expLocalAddress = localBaseAddrB((cmdPtr - 1) / 2)
-      }  // else 0, always 0 for kernels
-      expect(dut.io.dma.localBaseAddr, expLocalAddress)
       var expBusAddress = 0
       if (cmdPtr-1 < 2*loadConfigs) {
         if ((cmdPtr - 1) % 2 == 0)
@@ -522,6 +515,16 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
           expBurstLen = burstSizeB((cmdPtr - 1) / 2)
       } else {
         expBurstLen = burstSizeK((cmdPtr-1) - 2*loadConfigs)
+      }
+      expect(dut.io.dma.burstLen, expBurstLen)
+      var expRowLen = 0
+      if (cmdPtr-1 < 2*loadConfigs) {
+        if ((cmdPtr - 1) % 2 == 0)
+          expRowLen = rowSizeA((cmdPtr - 1) / 2)
+        else
+          expRowLen = rowSizeB((cmdPtr - 1) / 2)
+      } else {
+        expRowLen = rowSizeK((cmdPtr-1) - 2*loadConfigs)
       }
       expect(dut.io.dma.burstLen, expBurstLen)
       expect(dut.io.dma.start, true.B)

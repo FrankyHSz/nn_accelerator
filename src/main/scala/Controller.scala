@@ -1,6 +1,7 @@
 
 import chisel3._
 import chisel3.util.{Cat, Enum, log2Up}
+import _root_.arithmetic.gridSize
 import _root_.memory._
 import scala.collection.immutable.ListMap
 
@@ -72,9 +73,9 @@ class Controller(testInternals: Boolean) extends Module {
 
     // DMA interface
     val dma = new Bundle() {
-      val localBaseAddr = Output(UInt(localAddrWidth.W))
       val busBaseAddr   = Output(UInt(busAddrWidth.W))
       val burstLen      = Output(UInt(localAddrWidth.W))
+      val rowLen        = Output(UInt(log2Up(gridSize+1).W))
       val sel   = Output(Bool())
       val start = Output(Bool())
       val done  = Input(Bool())
@@ -182,9 +183,7 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Invalidate-on-read signals
   val cmdRead = WireDefault(false.B)
-  val ldARead = WireDefault(false.B)
-  val ldKRead = WireDefault(false.B)
-  val ldSRead = WireDefault(false.B)
+  val loadRead = WireDefault(false.B)
 
   // Validity registers
   // - Writing a word makes that word valid
@@ -203,10 +202,7 @@ class Controller(testInternals: Boolean) extends Module {
   } .elsewhen (io.statusSel && !io.rdWrN && io.wrData(qEmp)) {
     for (i <- 0 until busDataWidth)
       ldAValid(i) := false.B
-  } .elsewhen (ldARead) {
-    ldAValid(ldAPtr) := false.B
-    ldAValid(ldAPtr + 1.U) := false.B
-  } .elsewhen (ldKRead) {
+  } .elsewhen (loadRead) {
     ldAValid(ldAPtr) := false.B
   }
   when (io.ldSizeSel && !io.rdWrN) {
@@ -214,8 +210,9 @@ class Controller(testInternals: Boolean) extends Module {
   } .elsewhen (io.statusSel && !io.rdWrN && io.wrData(qEmp)) {
     for (i <- 0 until busDataWidth)
       ldSValid(i) := false.B
-  } .elsewhen (ldSRead) {
+  } .elsewhen (loadRead) {
     ldSValid(ldSPtr) := false.B
+    ldSValid(ldSPtr+1.U) := false.B
   }
 
   // Providing information about the internal
@@ -244,11 +241,14 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Command ("instruction") and operand registers (to be continued...)
   val currCommand = RegInit(0.U(busDataWidth.W))
-  val dmaLocalBaseAddr = RegInit(0.U(localAddrWidth.W))
   val dmaBusBaseAddr   = RegInit(0.U(busAddrWidth.W))
   val dmaBurstLen      = RegInit(0.U(localAddrWidth.W))
   val dmaMemSel = RegInit(true.B)
   val dmaStart  = RegInit(false.B)
+  val widthA  = RegInit(0.U(log2Up(gridSize+1).W))
+  val widthB  = RegInit(0.U(log2Up(gridSize+1).W))
+  val heightA = RegInit(0.U(log2Up(gridSize+1).W))
+  val heightB = RegInit(0.U(log2Up(gridSize+1).W))
 
   // Next state logic and related operations
   when (stateReg === idle) {
@@ -279,27 +279,27 @@ class Controller(testInternals: Boolean) extends Module {
         // Providing information for DMA
         when (ldAValid(ldAPtr)) {
           dmaBusBaseAddr := loadAddrRF(ldAPtr)
-          when (currCommand === LOAD_K.U) {
-            dmaLocalBaseAddr := 0.U
-          } .elsewhen (currCommand =/= LOAD_K.U && ldAValid(ldAPtr+1.U)) {
-            dmaLocalBaseAddr := loadAddrRF(ldAPtr + 1.U)(localAddrWidth - 1, 0)
-          }
         } .otherwise {
           setNoBaseAddress := true.B
           stateReg := idle
         }
-        when (ldSValid(ldSPtr)) {
+        when (ldSValid(ldSPtr) && ldSValid(ldSPtr+1.U)) {
           dmaBurstLen := loadSizeRF(ldSPtr)
+          when (currCommand === LOAD_B.U) {
+            widthB := loadSizeRF(ldSPtr+1.U)
+          } .otherwise {  // LOAD_A or LOAD_K
+            widthA := loadSizeRF(ldSPtr+1.U)
+          }
         } .otherwise {
           setNoSize := true.B
           stateReg := idle
         }
         // Providing control signals for DMA
         dmaMemSel := (currCommand === LOAD_A.U || currCommand === LOAD_K.U)
-        dmaStart  := ldAValid(ldAPtr) && (currCommand === LOAD_K.U || ldAValid(ldAPtr+1.U)) && ldSValid(ldSPtr)
+        dmaStart  := ldAValid(ldAPtr) && ldSValid(ldSPtr) && ldSValid(ldSPtr+1.U)
         // Updating read pointers
-        ldAPtr := ldAPtr + Mux(currCommand === LOAD_K.U, 1.U, 2.U)
-        ldSPtr := ldSPtr + 1.U
+        ldAPtr := ldAPtr + 1.U
+        ldSPtr := ldSPtr + 2.U
       } .elsewhen ((currCommand === SET_SIGM.U) || (currCommand === SET_RELU.U)) {
         stateReg := execute
         actSelReg := (currCommand === SET_RELU.U)
@@ -327,16 +327,14 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Signals to invalidate register data on read (to be continued...)
   cmdRead := (stateReg === fetch) && statusReg(chEn) && cmdValid(cmdPtr)
-  ldARead := (stateReg === decode) && statusReg(chEn) && ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U))
-  ldKRead := (stateReg === decode) && statusReg(chEn) && (currCommand === LOAD_K.U)
-  ldSRead := (stateReg === decode) && statusReg(chEn) && (
+  loadRead := (stateReg === decode) && statusReg(chEn) && (
     (currCommand === LOAD_A.U) || (currCommand === LOAD_B.U) || (currCommand === LOAD_K.U))
 
   // Output driving from registers
   // - DMA
-  io.dma.localBaseAddr := dmaLocalBaseAddr
-  io.dma.busBaseAddr   := dmaBusBaseAddr
-  io.dma.burstLen      := dmaBurstLen
+  io.dma.busBaseAddr := dmaBusBaseAddr
+  io.dma.burstLen    := dmaBurstLen
+  io.dma.rowLen      := Mux(currCommand === LOAD_B.U, widthB, widthA)
   io.dma.sel   := dmaMemSel
   io.dma.start := dmaStart
   // - Activation Grid
