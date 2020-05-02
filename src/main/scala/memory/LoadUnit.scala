@@ -1,6 +1,7 @@
 package memory
 
 import chisel3._
+import chisel3.util.log2Up
 import _root_.arithmetic.gridSize
 
 class LoadUnit extends Module {
@@ -9,8 +10,8 @@ class LoadUnit extends Module {
     // Control interface
     val en       = Input(Bool())
     val mulConvN = Input(Bool())
-    val sizeA    = Input(UInt(localAddrWidth.W))
-    val sizeB    = Input(UInt(localAddrWidth.W))
+    val sizeA    = Input(UInt(log2Up(gridSize+1).W))
+    val sizeB    = Input(UInt(log2Up(gridSize+1).W))
 
     // Local memory interfaces
     val addrA = Output(UInt(localAddrWidth.W))
@@ -24,7 +25,7 @@ class LoadUnit extends Module {
   // Free-running address generators (counters)
   val addrAReg = RegInit(0.U(localAddrWidth.W))
   val addrBReg = RegInit(0.U(localAddrWidth.W))
-  when (io.en) {
+  when (RegNext(io.en)) {
 
     // Generating addresses for matrix multiplication
     when (io.mulConvN) {
@@ -41,15 +42,21 @@ class LoadUnit extends Module {
       }
       // When we reach the right edge of image with
       // right edge of kernel then we jump to the next line
-      when (addrBReg(localAddrWidth/2-1, 0) === (io.sizeB - io.sizeA - 1.U)) {
-        addrBReg := addrBReg + io.sizeA + 1.U
+      when (addrAReg === (io.sizeA*io.sizeA)-1.U) {
+        when (addrBReg(localAddrWidth-1, localAddrWidth/2) === (io.sizeB-1.U)) {
+          addrBReg := 0.U
+        } .otherwise {
+          addrBReg := addrBReg - io.sizeA + 1.U - (io.sizeA - 2.U) * io.sizeB
+        }
+      } .elsewhen (addrBReg(localAddrWidth/2-1, 0) === (io.sizeA - 1.U)) {
+        addrBReg := addrBReg + io.sizeB - io.sizeA + 1.U
       } .otherwise {
         addrBReg := addrBReg + 1.U
       }
     }
   } .otherwise {
     addrAReg := 0.U
-    addrAReg := 0.U
+    addrBReg := 0.U
   }
 
   io.addrA := addrAReg
@@ -71,7 +78,7 @@ class LoadUnit extends Module {
   // Clearing AU accumulators after wrap-around
   // Mul: Address become 0 when a row of the output matrix is finished
   // Conv: Address become 0 when one row of output pixels are finished
-  io.auClr := RegNext(io.en && (addrAReg === 0.U))
+  io.auClr := RegNext(io.en) && (addrAReg === 0.U)
 
   def getAddrW = localAddrWidth
   def getN = gridSize

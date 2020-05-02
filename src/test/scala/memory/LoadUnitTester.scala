@@ -15,12 +15,12 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
   poke(dut.io.sizeA, n.U)
   poke(dut.io.sizeB, n.U)
   step(1)
-  for (t <- 1 until 2*maxAddress) {
+  for (t <- 0 until 2*maxAddress) {
     expect(dut.io.addrA, t % maxAddress)
     expect(dut.io.addrB, (t * n) % maxAddress)
     for (i <- 0 until n)
       expect(dut.io.auEn(i), true)
-    expect(dut.io.auClr, ((t-1) % maxAddress) == 0)
+    expect(dut.io.auClr, (t % maxAddress) == 0)
     step(1)
   }
 
@@ -34,18 +34,42 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
   // Testing for all supported kernel sizes
   print("Tested kernel sizes: ")
   for (kernelSize <- 3 to 8) {
+    var expB = -1
     print(kernelSize + " ")
     poke(dut.io.en, true.B)
     poke(dut.io.mulConvN, false.B)
     poke(dut.io.sizeA, kernelSize.U)
     poke(dut.io.sizeB, n.U)
     step(1)
-    for (t <- 1 until 2 * (n * (n-kernelSize))) {
+    for (t <- 0 until 2 * ((n-kernelSize) * (n-kernelSize))) {
+
+      // AddrA sweeps through the kernel continuously
       expect(dut.io.addrA, t % (kernelSize*kernelSize))
-      expect(dut.io.addrB, ((t/(n-kernelSize))*n + t%(n-kernelSize)) % maxAddress)
+
+      // AddrB follows the first kernel in the row
+      if (t != 0 && t%(kernelSize*kernelSize) == 0) {
+        if ((expB+1)/n == n-1) {
+          // If we are in the last row of image, we are done (starting again from 0)
+          expB = 0
+        } else {
+          // If a kernel is done, do a "carriage return" and go up (kernelSize-2) rows
+          expB = expB - kernelSize + 1 - (kernelSize-2) * n
+        }
+      } else {
+        if ((expB+1)%n == kernelSize) {
+          // If the next column would be out of the kernel, we jump to the beginning of next row
+          expB += n - kernelSize + 1
+        } else {
+          // Otherwise just step to the next column
+          expB += 1
+        }
+      }
+      expB = expB % maxAddress
+      expect(dut.io.addrB, expB)
+
       for (i <- 0 until n)
         expect(dut.io.auEn(i), (i < (n-kernelSize-1)))
-      expect(dut.io.auClr, ((t-1) % (kernelSize*kernelSize)) == 0)
+      expect(dut.io.auClr, (t % (kernelSize*kernelSize)) == 0)
       step(1)
     }
 
