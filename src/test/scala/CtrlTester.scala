@@ -463,6 +463,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.dma.busBaseAddr, busBaseAddrA(0))
     expect(dut.io.dma.ldHeight, heightA(0))
     expect(dut.io.dma.ldWidth, widthA(0))
+    expect(dut.io.dma.rdWrN, true.B)
     expect(dut.io.dma.start, true.B)
     poke(dut.io.dma.done, false.B)        // Emulating DMA
     step(1)
@@ -734,11 +735,19 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i < 3))
 
+    // Writing store command
+    poke(dut.io.addr, 3.U)
+    poke(dut.io.wrData, dut.STORE.U)
+    step(1)
+    expect(dut.io.statusReg, 0.U)
+    for (i <- 0 until dut.getDataW)
+      expect(dut.io.cmdValid(i), (i < 4))
+
     // Switching from command RF to address RF
     poke(dut.io.commandSel, false.B)
     poke(dut.io.ldAddrSel, true.B)
 
-    // Writing first address
+    // Writing first address for LOAD_[A/K]
     poke(dut.io.addr, 0.U)
     poke(dut.io.wrData, 42.U)
     // - Before clock edge, everything remains in reset (invalid addresses)
@@ -749,12 +758,18 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     for (i <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(i), (i==0))
     step(1)
-    // Writing second address
+    // Writing second address for LOAD_B
     poke(dut.io.addr, 1.U)
     poke(dut.io.wrData, 13.U)
     step(1)
     for (bit <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(bit), (bit < 2))
+    // Writing third address for STORE
+    poke(dut.io.addr, 2.U)
+    poke(dut.io.wrData, 99.U)
+    step(1)
+    for (bit <- 0 until dut.getDataW)
+      expect(dut.io.ldAValid(bit), (bit < 3))
 
     // Switching from address RF to size RF
     poke(dut.io.ldAddrSel, false.B)
@@ -800,6 +815,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.dma.ldHeight, expHeight)
     val expWidth = if (cmd == dut.MMUL_S) widthA(0) else sizeK(0)
     expect(dut.io.dma.ldWidth, expWidth)
+    expect(dut.io.dma.rdWrN, true.B)
     expect(dut.io.dma.start, true.B)
     poke(dut.io.dma.done, false.B)        // Emulating DMA
     step(1)
@@ -832,6 +848,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.dma.busBaseAddr, 13)
     expect(dut.io.dma.ldHeight, heightB(0))
     expect(dut.io.dma.ldWidth, widthB(0))
+    expect(dut.io.dma.rdWrN, true.B)
     expect(dut.io.dma.start, true.B)
     poke(dut.io.dma.done, false.B)        // Emulating DMA
     step(1)
@@ -869,6 +886,35 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     }
     poke(dut.io.computeDone, true.B)         // Emulating LoadUnit
     step(1)
+    expect(dut.io.stateReg, dut.fetch)
+
+    step(1)
+    expect(dut.io.stateReg, dut.decode)
+    expect(dut.io.currCommand, dut.STORE.U)
+    step(1)
+    expect(dut.io.stateReg, dut.execute)
+    expect(dut.io.currCommand, dut.STORE.U)
+    // - DMA interface is expected to be active
+    expect(dut.io.dma.busBaseAddr, 99)
+    val expOutHeight = if (cmd == dut.MMUL_S) heightA(0) else heightB(0) - sizeK(0) + 1
+    expect(dut.io.dma.ldHeight, expOutHeight)
+    val expOutWidth = if (cmd == dut.MMUL_S) widthB(0) else widthB(0) - sizeK(0) + 1
+    expect(dut.io.dma.ldWidth, expOutWidth)
+    expect(dut.io.dma.rdWrN, false.B)
+    expect(dut.io.dma.start, true.B)
+    poke(dut.io.dma.done, false.B)        // Emulating DMA
+    step(1)
+    expect(dut.io.stateReg, dut.execute)  // FSM expected to remain in execute state during DMA operation
+    expect(dut.io.dma.start, false.B)     // Start is expected to go low after one clock cycle
+    // - While DMA is not done, FSM should wait in execute state
+    for (_ <- 0 until 10) {
+      step(1)
+      expect(dut.io.stateReg, dut.execute)
+      expect(dut.io.dma.start, false.B)
+    }
+    poke(dut.io.dma.done, true.B)         // Emulating DMA
+    step(1)
+
     expect(dut.io.stateReg, dut.idle)
     expect(dut.io.computeEnable, false.B)
     expStatus = (1 << dut.chEn) + (1 << dut.busy) + (1 << dut.qEmp)

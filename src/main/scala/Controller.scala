@@ -46,6 +46,8 @@ class Controller(testInternals: Boolean) extends Module {
   val SET_RELU = 5  // [00...0101] Sets activation to ReLU. N.f.d.r.
   val CONV_S   = 8  // [0...01000] Performs (single) convolution on previously loaded data. N.f.d.r.
   val MMUL_S   = 9  // [0...01001] Performs (single) matrix multiplication on previously loaded data. N.f.d.r.
+  val STORE    = 16 // [0..010000] Stores the result of last operation from output memory to system memory. Needs a
+                    //             base address in system memory to know where to save the data.
 
   // Useful constants for module
   val blockAddrW  = log2Up(busDataWidth)
@@ -75,8 +77,9 @@ class Controller(testInternals: Boolean) extends Module {
     // DMA interface
     val dma = new Bundle() {
       val busBaseAddr   = Output(UInt(busAddrWidth.W))
-      val ldHeight = Output(UInt(localAddrWidth.W))
+      val ldHeight = Output(UInt(log2Up(gridSize+1).W))
       val ldWidth  = Output(UInt(log2Up(gridSize+1).W))
+      val rdWrN = Output(Bool())
       val sel   = Output(Bool())
       val start = Output(Bool())
       val done  = Input(Bool())
@@ -200,6 +203,7 @@ class Controller(testInternals: Boolean) extends Module {
   // Invalidate-on-read signals
   val cmdRead = WireDefault(false.B)
   val loadRead = WireDefault(false.B)
+  val storeRead = WireDefault(false.B)
 
   // Validity registers
   // - Writing a word makes that word valid
@@ -254,6 +258,7 @@ class Controller(testInternals: Boolean) extends Module {
   val dmaBusBaseAddr   = RegInit(0.U(busAddrWidth.W))
   val dmaBurstLen      = RegInit(0.U(localAddrWidth.W))
   val dmaMemSel = RegInit(true.B)
+  val dmaRdWrN  = RegInit(true.B)
   val dmaStart  = RegInit(false.B)
   val widthAReg  = RegInit(0.U(log2Up(gridSize+1).W))
   val widthBReg  = RegInit(0.U(log2Up(gridSize+1).W))
@@ -263,6 +268,8 @@ class Controller(testInternals: Boolean) extends Module {
   val mulConvNReg      = RegInit(false.B)
   val loadedOpOne = RegInit(false.B)
   val loadedOpTwo = RegInit(false.B)
+  val nothing :: mmul :: conv :: Nil = Enum(3)
+  val lastComputation = RegInit(nothing)
 
   // Next state logic and related operations
   when (stateReg === idle) {
@@ -312,6 +319,7 @@ class Controller(testInternals: Boolean) extends Module {
         // Providing control signals for DMA
         dmaMemSel := (currCommand === LOAD_A.U || currCommand === LOAD_K.U)
         dmaStart  := ldAValid(ldAPtr) && ldSValid(ldSPtr) && ldSValid(ldSPtr+1.U)
+        dmaRdWrN  := ldAValid(ldAPtr) && ldSValid(ldSPtr) && ldSValid(ldSPtr+1.U)
         // Updating read pointers
         ldAPtr := ldAPtr + 1.U
         ldSPtr := ldSPtr + 2.U
@@ -325,6 +333,20 @@ class Controller(testInternals: Boolean) extends Module {
           loadedOpTwo := false.B
           computeEnableReg := true.B
           mulConvNReg      := (currCommand === MMUL_S.U)
+        }
+      } .elsewhen (currCommand === STORE.U) {
+        when (ldAValid(ldAPtr)) {
+          stateReg := execute
+          dmaBusBaseAddr := loadAddrRF(ldAPtr)
+          when (lastComputation === mmul) {
+            // heightAReg := heightAReg (does not change)
+            widthAReg  := widthBReg
+          } .elsewhen (lastComputation === conv) {
+            heightAReg := heightBReg - widthAReg + 1.U
+            widthAReg  := widthBReg - widthAReg + 1.U
+          }
+          dmaStart := true.B
+          dmaRdWrN := false.B
         }
       } .otherwise {
         setUnknownCommand := true.B
@@ -351,6 +373,11 @@ class Controller(testInternals: Boolean) extends Module {
       }
       when (currCommand === MMUL_S.U || currCommand === CONV_S.U) {
         computeEnableReg := false.B
+        when (currCommand === MMUL_S.U) {
+          lastComputation := mmul
+        } .otherwise {
+          lastComputation := conv
+        }
       }
     } .otherwise {                       // If no valid command remained
       stateReg := idle                   // then go idle
@@ -372,12 +399,14 @@ class Controller(testInternals: Boolean) extends Module {
   cmdRead := (stateReg === fetch) && statusReg(chEn) && cmdValid(cmdPtr)
   loadRead := (stateReg === decode) && statusReg(chEn) && (
     (currCommand === LOAD_A.U) || (currCommand === LOAD_B.U) || (currCommand === LOAD_K.U))
+  storeRead := (stateReg === decode) && statusReg(chEn) && (currCommand === STORE.U)
 
   // Output driving from registers
   // - DMA
   io.dma.busBaseAddr := dmaBusBaseAddr
   io.dma.ldHeight := Mux(currCommand === LOAD_B.U, heightBReg, heightAReg)
   io.dma.ldWidth  := Mux(currCommand === LOAD_B.U, widthBReg, widthAReg)
+  io.dma.rdWrN := dmaRdWrN
   io.dma.sel   := dmaMemSel
   io.dma.start := dmaStart
   // - Activation Grid
