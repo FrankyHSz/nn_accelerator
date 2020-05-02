@@ -1,8 +1,8 @@
 package memory
 
 import chisel3._
-import chisel3.util.{Cat, Enum}
-import _root_.arithmetic.baseType
+import chisel3.util.{Enum, log2Up}
+import _root_.arithmetic.{baseType, gridSize}
 
 class DMA extends Module {
   val io = IO(new Bundle() {
@@ -24,13 +24,13 @@ class DMA extends Module {
 
     // DMA <-> Controller
     val ctrl = new Bundle() {
-      val localBaseAddr = Input(UInt(localAddrWidth.W))
       val busBaseAddr = Input(UInt(busAddrWidth.W))
-      val burstLen = Input(UInt(localAddrWidth.W))
+      val ldHeight = Input(UInt(log2Up(gridSize+1).W))
+      val ldWidth  = Input(UInt(log2Up(gridSize+1).W))
       val rdWrN = Input(Bool())
-      val sel = Input(Bool())
+      val sel   = Input(Bool())
       val start = Input(Bool())
-      val done = Output(Bool())
+      val done  = Output(Bool())
     }
 
     // DMA <-> Local Memories
@@ -85,9 +85,9 @@ class DMA extends Module {
   when (stateReg === init) {
     when (io.ctrl.start) {
       stateReg := check
-      localAddrReg   := io.ctrl.localBaseAddr
+      localAddrReg   := 0.U
       busBaseAddrReg := io.ctrl.busBaseAddr
-      burstLenReg    := io.ctrl.burstLen
+      burstLenReg    := io.ctrl.ldWidth * io.ctrl.ldHeight
       selReg  := io.ctrl.sel
       rdWrReg := io.ctrl.rdWrN
       doneReg := false.B
