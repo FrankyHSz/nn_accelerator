@@ -42,12 +42,16 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   // Load parameters
   val loadACmd = dut.LOAD_A
   val loadBCmd = dut.LOAD_B
+  val loadKCmd = dut.LOAD_K
   val busBaseAddrA = Array(0, 42, 1024)
   val busBaseAddrB = Array(0, 13, 2048)
+  val busBaseAddrK = Array(99, 74, 575)
   val localBaseAddrA = Array(20, 0, 99)
   val localBaseAddrB = Array(0, 512, 42)
+  // localBaseAddrK is always 0
   val burstSizeA = Array(10, 123, 512)
   val burstSizeB = Array(9, 131, 256)
+  val burstSizeK = Array(3, 6, 8)
   val loadConfigs = 3  // Should match with the size of arrays above
 
   // Emulating DMA
@@ -350,9 +354,14 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       poke(dut.io.wrData, loadCmd.U)
       step(1)
     }
+    for (i <- 0 until loadConfigs) {
+      poke(dut.io.addr, (2*loadConfigs+i).U)
+      poke(dut.io.wrData, loadKCmd.U)
+      step(1)
+    }
     // - Expecting active valid bits for all of them
     for (i <- 0 until dut.getDataW)
-      expect(dut.io.cmdValid(i), (i < 2*loadConfigs))
+      expect(dut.io.cmdValid(i), (i < 3*loadConfigs))
     poke(dut.io.commandSel, false.B)
     poke(dut.io.rdWrN, true.B)
   }
@@ -363,7 +372,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     poke(dut.io.ldAddrSel, true.B)
     poke(dut.io.rdWrN, false.B)
     poke(dut.io.addr, 0.U)
-    poke(dut.io.wrData, localBaseAddrA(0).U)
+    poke(dut.io.wrData, busBaseAddrA(0).U)
     // - Before clock edge, everything remains in reset (invalid addresses)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(i), false)
@@ -372,7 +381,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     for (i <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(i), (i==0))
     poke(dut.io.addr, 1.U)
-    poke(dut.io.wrData, busBaseAddrA(0).U)
+    poke(dut.io.wrData, localBaseAddrA(0).U)
     step(1)
     // - After second clock edge, both ldAValid(0) and ldAValid(1) is true but not others
     for (i <- 0 until dut.getDataW)
@@ -380,17 +389,24 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     // - Writing the other addresses
     for (i <- 1 until 2*loadConfigs) {
       poke(dut.io.addr, (2*i).U)
-      val localBaseAddress = if (i%2 == 0) localBaseAddrA(i/2) else localBaseAddrB(i/2)
-      poke(dut.io.wrData, localBaseAddress.U)
-      step(1)
-      for (bit <- 0 until dut.getDataW)
-        expect(dut.io.ldAValid(bit), (bit < (2*i+1)))
-      poke(dut.io.addr, (2*i+1).U)
       val busBaseAddress = if (i%2 == 0) busBaseAddrA(i/2) else busBaseAddrB(i/2)
       poke(dut.io.wrData, busBaseAddress.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
+        expect(dut.io.ldAValid(bit), (bit < (2*i+1)))
+      poke(dut.io.addr, (2*i+1).U)
+      val localBaseAddress = if (i%2 == 0) localBaseAddrA(i/2) else localBaseAddrB(i/2)
+      poke(dut.io.wrData, localBaseAddress.U)
+      step(1)
+      for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldAValid(bit), (bit < (2*i+2)))
+    }
+    for (i <- 0 until loadConfigs) {
+      poke(dut.io.addr, (2*2*loadConfigs+i).U)
+      poke(dut.io.wrData, busBaseAddrK(i).U)
+      step(1)
+      for (bit <- 0 until dut.getDataW)
+        expect(dut.io.ldAValid(bit), (bit < 2*2*loadConfigs+i+1))
     }
     poke(dut.io.ldAddrSel, false.B)
     poke(dut.io.rdWrN, true.B)
@@ -408,6 +424,13 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (bit < i+1))
+    }
+    for (i <- 0 until loadConfigs) {
+      poke(dut.io.addr, (2*loadConfigs+i).U)
+      poke(dut.io.wrData, burstSizeK(i).U)
+      step(1)
+      for (bit <- 0 until dut.getDataW)
+        expect(dut.io.ldSValid(bit), (bit < 2*loadConfigs+i+1))
     }
     poke(dut.io.ldSizeSel, false.B)
     poke(dut.io.rdWrN, true.B)
@@ -457,7 +480,15 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       cmdPtr += 1
       step(1)
       expect(dut.io.stateReg, dut.decode)
-      val expCmd = if ((cmdPtr-1)%2 == 0) loadACmd else loadBCmd
+      var expCmd = 0
+      if (cmdPtr-1 < 2*loadConfigs) {
+        if ((cmdPtr - 1) % 2 == 0)
+          expCmd = loadACmd
+        else
+          expCmd = loadBCmd
+      } else {
+        expCmd = loadKCmd
+      }
       expect(dut.io.currCommand, expCmd)
       expect(dut.io.cmdPtr, cmdPtr.U)
       step(1)
@@ -465,11 +496,33 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       expect(dut.io.currCommand, expCmd)
       expect(dut.io.cmdPtr, cmdPtr.U)
       // - DMA interface is expected to be active
-      val expLocalAddress = if ((cmdPtr-1)%2 == 0) localBaseAddrA((cmdPtr-1)/2) else localBaseAddrB((cmdPtr-1)/2)
+      var expLocalAddress = 0
+      if (cmdPtr-1 < 2*loadConfigs) {
+        if ((cmdPtr - 1) % 2 == 0)
+          expLocalAddress = localBaseAddrA((cmdPtr - 1) / 2)
+        else
+          expLocalAddress = localBaseAddrB((cmdPtr - 1) / 2)
+      }  // else 0, always 0 for kernels
       expect(dut.io.dma.localBaseAddr, expLocalAddress)
-      val expBusAddress = if ((cmdPtr-1)%2 == 0) busBaseAddrA((cmdPtr-1)/2) else busBaseAddrB((cmdPtr-1)/2)
+      var expBusAddress = 0
+      if (cmdPtr-1 < 2*loadConfigs) {
+        if ((cmdPtr - 1) % 2 == 0)
+          expBusAddress = busBaseAddrA((cmdPtr - 1) / 2)
+        else
+          expBusAddress = busBaseAddrB((cmdPtr - 1) / 2)
+      } else {
+        expBusAddress = busBaseAddrK((cmdPtr-1) - 2*loadConfigs)
+      }
       expect(dut.io.dma.busBaseAddr, expBusAddress)
-      val expBurstLen = if ((cmdPtr-1)%2 == 0) burstSizeA((cmdPtr-1)/2) else burstSizeB((cmdPtr-1)/2)
+      var expBurstLen = 0
+      if (cmdPtr-1 < 2*loadConfigs) {
+        if ((cmdPtr - 1) % 2 == 0)
+          expBurstLen = burstSizeA((cmdPtr - 1) / 2)
+        else
+          expBurstLen = burstSizeB((cmdPtr - 1) / 2)
+      } else {
+        expBurstLen = burstSizeK((cmdPtr-1) - 2*loadConfigs)
+      }
       expect(dut.io.dma.burstLen, expBurstLen)
       expect(dut.io.dma.start, true.B)
       poke(dut.io.dma.done, false.B)        // Emulating DMA

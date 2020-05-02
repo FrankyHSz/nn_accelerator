@@ -39,6 +39,7 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Supported commands
   val DUMMY    = 42 // For testing only
+  val LOAD_K   = 1  // [000...001] Loads kernel into mem. A bank0. Needs base address and size of data to be specified.
   val LOAD_A   = 3  // [000...011] Loads data into memory A. Needs base address and size of data to be specified.
   val LOAD_B   = 2  // [000...010] Loads data into memory B. Needs base address and size of data to be specified.
   val SET_SIGM = 4  // [00...0100] Sets activation to sigmoid. No further data required (N.f.d.r.).
@@ -182,6 +183,7 @@ class Controller(testInternals: Boolean) extends Module {
   // Invalidate-on-read signals
   val cmdRead = WireDefault(false.B)
   val ldARead = WireDefault(false.B)
+  val ldKRead = WireDefault(false.B)
   val ldSRead = WireDefault(false.B)
 
   // Validity registers
@@ -204,6 +206,8 @@ class Controller(testInternals: Boolean) extends Module {
   } .elsewhen (ldARead) {
     ldAValid(ldAPtr) := false.B
     ldAValid(ldAPtr + 1.U) := false.B
+  } .elsewhen (ldKRead) {
+    ldAValid(ldAPtr) := false.B
   }
   when (io.ldSizeSel && !io.rdWrN) {
     ldSValid(io.addr(blockAddrW - 1, 0)) := true.B
@@ -270,12 +274,16 @@ class Controller(testInternals: Boolean) extends Module {
     when (statusReg(chEn)) {
       when (currCommand === DUMMY.U) {
         stateReg := execute
-      } .elsewhen ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U)) {
+      } .elsewhen ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U) || (currCommand === LOAD_K.U)) {
         stateReg := execute
         // Providing information for DMA
-        when (ldAValid(ldAPtr) && ldAValid(ldAPtr+1.U)) {
-          dmaLocalBaseAddr := loadAddrRF(ldAPtr)(localAddrWidth - 1, 0)
-          dmaBusBaseAddr := loadAddrRF(ldAPtr + 1.U)
+        when (ldAValid(ldAPtr)) {
+          dmaBusBaseAddr := loadAddrRF(ldAPtr)
+          when (currCommand === LOAD_K.U) {
+            dmaLocalBaseAddr := 0.U
+          } .elsewhen (currCommand =/= LOAD_K.U && ldAValid(ldAPtr+1.U)) {
+            dmaLocalBaseAddr := loadAddrRF(ldAPtr + 1.U)(localAddrWidth - 1, 0)
+          }
         } .otherwise {
           setNoBaseAddress := true.B
           stateReg := idle
@@ -287,10 +295,10 @@ class Controller(testInternals: Boolean) extends Module {
           stateReg := idle
         }
         // Providing control signals for DMA
-        dmaMemSel := (currCommand === LOAD_A.U)
-        dmaStart  := ldAValid(ldAPtr) && ldAValid(ldAPtr+1.U) && ldSValid(ldSPtr)
+        dmaMemSel := (currCommand === LOAD_A.U || currCommand === LOAD_K.U)
+        dmaStart  := ldAValid(ldAPtr) && (currCommand === LOAD_K.U || ldAValid(ldAPtr+1.U)) && ldSValid(ldSPtr)
         // Updating read pointers
-        ldAPtr := ldAPtr + 2.U
+        ldAPtr := ldAPtr + Mux(currCommand === LOAD_K.U, 1.U, 2.U)
         ldSPtr := ldSPtr + 1.U
       } .elsewhen ((currCommand === SET_SIGM.U) || (currCommand === SET_RELU.U)) {
         stateReg := execute
@@ -320,7 +328,9 @@ class Controller(testInternals: Boolean) extends Module {
   // Signals to invalidate register data on read (to be continued...)
   cmdRead := (stateReg === fetch) && statusReg(chEn) && cmdValid(cmdPtr)
   ldARead := (stateReg === decode) && statusReg(chEn) && ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U))
-  ldSRead := (stateReg === decode) && statusReg(chEn) && ((currCommand === LOAD_A.U) || (currCommand === LOAD_B.U))
+  ldKRead := (stateReg === decode) && statusReg(chEn) && (currCommand === LOAD_K.U)
+  ldSRead := (stateReg === decode) && statusReg(chEn) && (
+    (currCommand === LOAD_A.U) || (currCommand === LOAD_B.U) || (currCommand === LOAD_K.U))
 
   // Output driving from registers
   // - DMA
