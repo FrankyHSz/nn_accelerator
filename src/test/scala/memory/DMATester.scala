@@ -3,8 +3,8 @@ package memory
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
 import javax.naming.ConfigurationException
-
 import scala.util.control.Breaks._
+import _root_.arithmetic.gridSize
 
 @throws(classOf[IllegalArgumentException])
 @throws(classOf[ConfigurationException])
@@ -52,9 +52,9 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
   expect(dut.io.bus.busBurstLen, 0.U)       // Initial burst length is 0
   expect(dut.io.bus.busRdWrN, true.B)       // Initial Rd/WrN control is "read" (true)
   expect(dut.io.bus.dmaReady, false.B)      // Initially the DMA is not ready with read info
-  expect(dut.io.ctrl.done, true.B)           // But it is ready to receive config from Controller
+  expect(dut.io.ctrl.done, true.B)          // But it is ready to receive config from Controller
   for (i <- 0 until dut.getChannels) {
-    expect(dut.io.addr(i), i.U)       // Initial wr. address is 0-1-2-3 (in case of 4 channels)
+    expect(dut.io.addr(i), i.U)         // Initial wr. address is 0-1-2-3 (in case of 4 channels)
     expect(dut.io.wrData(i), 0.S)       // Initial wr. data is 0 (on all channels)
   }
   expect(dut.io.wrEn, false.B)          // Initially write is disabled on local mem. ports
@@ -96,7 +96,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
     // are expected to have new values now
     // - Bus interface:
     expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
-    expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)).U)
+    expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)/dmaChannels).U)
     // - Local memory interface:
     expect(dut.io.memSel, targetMemIsA(config).B)
     for (ch <- 0 until dut.getChannels) {
@@ -134,7 +134,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         // Other signals do not change
         // - Bus interface:
         expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
-        expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)).U)
+        expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)/dmaChannels).U)
         expect(dut.io.bus.busRdWrN, true.B)   // Always reading
         // - Local memory interface:
         expect(dut.io.memSel, targetMemIsA(config).B)
@@ -154,7 +154,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
 
           // - Bus interface:
           expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
-          expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)).U)
+          expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)/dmaChannels).U)
           expect(dut.io.bus.busRdWrN, true.B)   // Always reading
           // - Local memory interface:
           expect(dut.io.memSel, targetMemIsA(config).B)
@@ -172,7 +172,9 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         // memories, but to addresses from localBaseAddr
         // and up and split into 4 separate bytes
         poke(dut.io.bus.busValid, true.B)
-        for (cycle <- 0 until memHeight(config)*memWidth(config)) {
+        var rowCntr = 0
+        var columnCntr = 0
+        for (cycle <- 0 until memHeight(config)*memWidth(config)/dmaChannels) {
 
           // Emulating memory read
           val address = (peek(dut.io.bus.busAddr).toInt + cycle) % sysMemSize
@@ -191,8 +193,14 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
           // Expecting 32-bit data to appear in 4 pieces, in little endian order
           expect(dut.io.memSel, targetMemIsA(config).B)
           expect(dut.io.wrEn, true.B)
+          if (cycle != 0 && ((columnCntr+dmaChannels) < memWidth(config))) {
+            columnCntr += dmaChannels
+          } else if (cycle != 0) {
+            columnCntr = 0
+            rowCntr += 1
+          }
           for (ch <- 0 until dut.getChannels) {
-            expect(dut.io.addr(ch), ((cycle*4 + ch) % localMemSize).U)
+            expect(dut.io.addr(ch), ((rowCntr*gridSize + columnCntr + ch) % localMemSize).U)
             expect(dut.io.wrData(ch), split(systemMemory(address), MSBs(ch), LSBs(ch)).S)
           }
         }
@@ -251,7 +259,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
     // are expected to have new values now
     // - Bus interface:
     expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
-    expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)).U)
+    expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)/dmaChannels).U)
     expect(dut.io.bus.busRdWrN, false.B)   // Always reading
     // - Local memory interface:
     expect(dut.io.memSel, targetMemIsA(config).B)  // Not used for stores
@@ -290,7 +298,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         // Other signals do not change
         // - Bus interface:
         expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
-        expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)).U)
+        expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)/dmaChannels).U)
         expect(dut.io.bus.busRdWrN, false.B)  // Should remain this way for stores
         expect(dut.io.bus.dmaReady, false.B)  // Should remain this way for stores
         // - Local memory interface:
@@ -309,7 +317,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
 
           // - Bus interface:
           expect(dut.io.bus.busAddr, sysMemOffsets(config).U)
-          expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)).U)
+          expect(dut.io.bus.busBurstLen, (memHeight(config)*memWidth(config)/dmaChannels).U)
           expect(dut.io.bus.busRdWrN, false.B)  // Should remain this way for stores
           expect(dut.io.bus.dmaReady, false.B)  // Should remain this way for stores
           // - Local memory interface:
@@ -325,7 +333,16 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
         // Driving bus ready
         poke(dut.io.bus.busReady, true.B)
         step(1)
-        for (cycle <- 0 until (memHeight(config)*memWidth(config))-1) {
+        var rowCntr = 0
+        var columnCntr = 0
+        for (cycle <- 0 until (memHeight(config)*memWidth(config))/dmaChannels-1) {
+
+          if (cycle != 0 && ((columnCntr+dmaChannels) < memWidth(config))) {
+            columnCntr += dmaChannels
+          } else if (cycle != 0) {
+            columnCntr = 0
+            rowCntr += 1
+          }
 
           // DMA holds valid high until the burst ends
           expect(dut.io.bus.dmaValid, true.B)
@@ -338,7 +355,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
             for (_ <- 0 until 5) {
               expect(dut.io.state, dut.write)
               for (ch <- 0 until dut.getChannels) {
-                expect(dut.io.addr(ch), ((cycle * 4 + ch) % localMemSize).U)
+                expect(dut.io.addr(ch), ((rowCntr*gridSize + columnCntr + ch) % localMemSize).U)
               }
               expect(dut.io.bus.dmaValid, true.B)
               expect(dut.io.ctrl.done, false.B)
@@ -357,7 +374,7 @@ class DMATester(dut: DMA) extends PeekPokeTester(dut) {
           } else {
             expect(dut.io.state, dut.write)
             for (ch <- 0 until dut.getChannels) {
-              expect(dut.io.addr(ch), ((cycle*4 + ch) % localMemSize).U)
+              expect(dut.io.addr(ch), ((rowCntr*gridSize + columnCntr + ch) % localMemSize).U)
             }
           }
 

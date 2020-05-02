@@ -53,6 +53,9 @@ class DMA extends Module {
   val localAddrReg   = RegInit(0.U(localAddrWidth.W))  // Not just container but also an up-counter
   val busBaseAddrReg = RegInit(0.U(busAddrWidth.W))
   val burstLenReg    = RegInit(0.U(localAddrWidth.W))  // Not just container but also a down-counter
+  val rowLengthReg   = RegInit(0.U(log2Up(gridSize+1).W))
+  val columnCounter  = RegInit(0.U(log2Up(gridSize+1).W))
+  val rowCounter     = RegInit(0.U(log2Up(gridSize+1).W))
   val busDataInReg   = RegNext(io.bus.busDataIn)
   val busDataOutReg  = RegInit(0.U(busDataWidth.W))
 
@@ -87,7 +90,10 @@ class DMA extends Module {
       stateReg := check
       localAddrReg   := 0.U
       busBaseAddrReg := io.ctrl.busBaseAddr
-      burstLenReg    := io.ctrl.ldWidth * io.ctrl.ldHeight
+      burstLenReg    := io.ctrl.ldWidth * io.ctrl.ldHeight >> (log2Up(dmaChannels))
+      rowLengthReg   := io.ctrl.ldWidth
+      columnCounter  := io.ctrl.ldWidth
+      rowCounter     := io.ctrl.ldHeight
       selReg  := io.ctrl.sel
       rdWrReg := io.ctrl.rdWrN
       doneReg := false.B
@@ -104,23 +110,49 @@ class DMA extends Module {
   } .elsewhen (stateReg === request) {
     when (rdWrReg && busValidReg) {
       stateReg := read
+      when (columnCounter > dmaChannels.U) {
+        columnCounter := columnCounter - dmaChannels.U
+        localAddrReg := localAddrReg + dmaChannels.U
+      } .otherwise {
+        rowCounter := rowCounter - 1.U
+        localAddrReg := localAddrReg + gridSize.U
+      }
       burstLenReg := burstLenReg - 1.U
-      localAddrReg := localAddrReg + dmaChannels.U
       io.wrEn := true.B
     } .elsewhen (!rdWrReg && busReadyReg) {
       stateReg := write
       burstLenReg := burstLenReg - 1.U
-      localAddrReg := localAddrReg + dmaChannels.U
+      when (columnCounter > dmaChannels.U) {
+        columnCounter := columnCounter - dmaChannels.U
+        localAddrReg := localAddrReg + dmaChannels.U
+      } .otherwise {
+        rowCounter := rowCounter - 1.U
+        localAddrReg := localAddrReg + gridSize.U
+      }
     }
   }. elsewhen (stateReg === read) {
     when (busValidReg) {
       when (burstLenReg > 1.U) {
+        when (columnCounter > dmaChannels.U) {
+          columnCounter := columnCounter - dmaChannels.U
+          localAddrReg := localAddrReg + dmaChannels.U
+        } .elsewhen (rowCounter > 1.U) {
+          columnCounter := rowLengthReg
+          rowCounter := rowCounter - 1.U
+          when (columnCounter =/= dmaChannels.U) {
+            localAddrReg := localAddrReg + (gridSize.U - columnCounter - rowLengthReg + dmaChannels.U)
+          } .otherwise {
+            localAddrReg := localAddrReg + (gridSize.U - rowLengthReg + dmaChannels.U)
+          }
+        }  // otherwise burstLenReg would be 1 or 0
         burstLenReg := burstLenReg - 1.U
-        localAddrReg := localAddrReg + dmaChannels.U
         io.wrEn := true.B
       } .otherwise {
         stateReg := init
-        burstLenReg := 0.U
+        burstLenReg   := 0.U
+        rowLengthReg  := 0.U
+        columnCounter := 0.U
+        rowCounter    := 0.U
         doneReg     := true.B
         dmaReadyReg := false.B
         io.wrEn := true.B
@@ -129,12 +161,26 @@ class DMA extends Module {
   } .elsewhen (stateReg === write) {
     when (busReadyReg) {
       when (burstLenReg > 1.U) {
+        when (columnCounter > dmaChannels.U) {
+          columnCounter := columnCounter - dmaChannels.U
+          localAddrReg := localAddrReg + dmaChannels.U
+        } .elsewhen (rowCounter > 1.U) {
+          columnCounter := rowLengthReg
+          rowCounter := rowCounter - 1.U
+          when (columnCounter =/= dmaChannels.U) {
+            localAddrReg := localAddrReg + (gridSize.U - columnCounter - rowLengthReg + dmaChannels.U)
+          } .otherwise {
+            localAddrReg := localAddrReg + (gridSize.U - rowLengthReg + dmaChannels.U)
+          }
+        }
         burstLenReg := burstLenReg - 1.U
-        localAddrReg := localAddrReg + dmaChannels.U
         dmaValidReg := true.B
       } .otherwise {
         stateReg := init
-        burstLenReg := 0.U
+        burstLenReg   := 0.U
+        rowLengthReg  := 0.U
+        columnCounter := 0.U
+        rowCounter    := 0.U
         doneReg     := true.B
         dmaValidReg := false.B
         wrReqReg := false.B
