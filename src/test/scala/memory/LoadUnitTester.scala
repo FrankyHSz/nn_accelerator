@@ -17,7 +17,7 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
   poke(dut.io.heightA, n.U)
   poke(dut.io.heightB, n.U)
   step(1)
-  for (t <- 0 until 2*maxAddress) {
+  for (t <- 0 until maxAddress) {
     expect(dut.io.addrA, t % maxAddress)
     expect(dut.io.addrB, (t * n) % maxAddress)
     for (i <- 0 until n)
@@ -25,6 +25,13 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
     expect(dut.io.auClr, (t % maxAddress) == 0)
     step(1)
   }
+  for (i <- 0 until n)
+    expect(dut.io.auEn(i), false.B)
+  expect(dut.io.done, true.B)
+  step(1)
+  poke(dut.io.en, false.B)
+  for (i <- 0 until n)
+    expect(dut.io.auEn(i), false.B)
 
   // Resetting address registers
   poke(dut.io.en, false.B)
@@ -44,7 +51,7 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
     poke(dut.io.widthB, n.U)
     poke(dut.io.heightB, n.U)
     step(1)
-    for (t <- 0 until 2 * ((n-kernelSize) * (n-kernelSize))) {
+    for (t <- 0 until ((n-kernelSize+1) * (kernelSize*kernelSize))) {
 
       // AddrA sweeps through the kernel continuously
       expect(dut.io.addrA, t % (kernelSize*kernelSize))
@@ -75,6 +82,13 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
       expect(dut.io.auClr, (t % (kernelSize*kernelSize)) == 0)
       step(1)
     }
+    for (i <- 0 until n)
+      expect(dut.io.auEn(i), false.B)
+    expect(dut.io.done, true.B)
+    step(1)
+    poke(dut.io.en, false.B)
+    for (i <- 0 until n)
+      expect(dut.io.auEn(i), false.B)
 
     // Resetting address registers
     poke(dut.io.en, false.B)

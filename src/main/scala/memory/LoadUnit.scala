@@ -1,7 +1,7 @@
 package memory
 
 import chisel3._
-import chisel3.util.log2Up
+import chisel3.util.{Cat, log2Up}
 import _root_.arithmetic.gridSize
 
 class LoadUnit extends Module {
@@ -9,6 +9,7 @@ class LoadUnit extends Module {
 
     // Control interface
     val en       = Input(Bool())
+    val done     = Output(Bool())
     val mulConvN = Input(Bool())
     val widthA   = Input(UInt(log2Up(gridSize+1).W))
     val widthB   = Input(UInt(log2Up(gridSize+1).W))
@@ -24,6 +25,8 @@ class LoadUnit extends Module {
     val auClr = Output(Bool())
   })
 
+  val doneReg = RegInit(true.B)
+
   // Free-running address generators (counters)
   val addrAReg = RegInit(0.U(localAddrWidth.W))
   val addrBReg = RegInit(0.U(localAddrWidth.W))
@@ -35,6 +38,7 @@ class LoadUnit extends Module {
       when (addrAReg(localAddrWidth/2-1, 0) === (io.widthA-1.U)) {                  // Last column
         when (addrAReg(localAddrWidth-1, localAddrWidth/2) === (io.heightA-1.U)) {  // Last row
           addrAReg := 0.U
+          doneReg := true.B
         } .otherwise {
           addrAReg := addrAReg + gridSize.U - io.widthA + 1.U  // Last column but not last row: next row
         }
@@ -61,6 +65,7 @@ class LoadUnit extends Module {
       when (addrAReg === (io.widthA*io.widthA)-1.U) {
         when (addrBReg(localAddrWidth-1, localAddrWidth/2) === (io.heightB-1.U)) {
           addrBReg := 0.U
+          doneReg := true.B
         } .otherwise {
           addrBReg := addrBReg - io.widthA + 1.U - (io.widthA - 2.U) * io.widthB
         }
@@ -75,6 +80,11 @@ class LoadUnit extends Module {
     addrBReg := 0.U
   }
 
+  when (doneReg) {
+    doneReg := !io.en  // Waiting on io.en to become high
+  }
+  io.done := doneReg
+
   io.addrA := addrAReg
   io.addrB := addrBReg
 
@@ -82,12 +92,12 @@ class LoadUnit extends Module {
 
     // For multiplication, as many AUs are enabled as the width of Matrix B
     when (io.mulConvN) {
-      io.auEn(i) := RegNext(io.en) && RegNext(i.U < io.widthB)
+      io.auEn(i) := io.en && (RegNext(io.en) ^ doneReg) && (i.U < io.widthB)
 
     // For convolution, as many AUs are enabled
     // as the number of kernels can fit into Matrix B
     } .otherwise {
-      io.auEn(i) := RegNext(io.en) && RegNext(i.U < (io.widthB - io.widthA - 1.U))
+      io.auEn(i) := io.en && (RegNext(io.en) ^ doneReg) && (i.U < (io.widthB - io.widthA - 1.U))
     }
   }
 
