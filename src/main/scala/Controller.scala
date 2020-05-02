@@ -25,11 +25,10 @@ class Controller(testInternals: Boolean) extends Module {
   val qEmp = 2  // Queue is empty   : signals that no operation is specified           (RD/ST)
   val itEn = 3  // Interrupt enable : enables generation of processor interrupts       (RD/WR)
   val itFl = 4  // Interrupt flag   : signals processor interrupt (if enabled)         (RD/CL)
-  val acEn = 5  // Activation enable: if cleared, bypasses the Activation Grid         (RD/WR)
   // ...
   val erFl = busDataWidth-1  // Error flag: signals that an error occurred during the last operation (RD)
   // Related
-  val unusedBitsInStatus = busDataWidth - 7
+  val unusedBitsInStatus = busDataWidth - 6
 
   // Error Cause register bits (indices) -- The whole register is read-only
   val unknownCommand = 0  // If a command (which is claimed to be valid in cmdValid reg.) is unrecognized.
@@ -45,6 +44,8 @@ class Controller(testInternals: Boolean) extends Module {
   val LOAD_B   = 2  // [000...010] Loads data into memory B. Needs base address and size of data to be specified.
   val SET_SIGM = 4  // [00...0100] Sets activation to sigmoid. No further data required (N.f.d.r.).
   val SET_RELU = 5  // [00...0101] Sets activation to ReLU. N.f.d.r.
+  val CONV_S   = 8  // [0...01000] Performs (single) convolution on previously loaded data. N.f.d.r.
+  val MMUL_S   = 9  // [0...01001] Performs (single) matrix multiplication on previously loaded data. N.f.d.r.
 
   // Useful constants for module
   val blockAddrW  = log2Up(busDataWidth)
@@ -74,8 +75,8 @@ class Controller(testInternals: Boolean) extends Module {
     // DMA interface
     val dma = new Bundle() {
       val busBaseAddr   = Output(UInt(busAddrWidth.W))
-      val burstLen      = Output(UInt(localAddrWidth.W))
-      val rowLen        = Output(UInt(log2Up(gridSize+1).W))
+      val ldHeight = Output(UInt(localAddrWidth.W))
+      val ldWidth  = Output(UInt(log2Up(gridSize+1).W))
       val sel   = Output(Bool())
       val start = Output(Bool())
       val done  = Input(Bool())
@@ -83,6 +84,15 @@ class Controller(testInternals: Boolean) extends Module {
 
     // Activation select for the Activation Grid
     val actSel = Output(Bool())
+
+    // Control signals for LoadUnit
+    val computeEnable = Output(Bool())
+    val computeDone   = Input(Bool())
+    val mulConvN      = Output(Bool())
+    val widthA  = Output(UInt(log2Up(gridSize+1).W))
+    val widthB  = Output(UInt(log2Up(gridSize+1).W))
+    val heightA = Output(UInt(log2Up(gridSize+1).W))
+    val heightB = Output(UInt(log2Up(gridSize+1).W))
 
     // Test port
     // - Memory-mapped and internal registers
@@ -131,6 +141,11 @@ class Controller(testInternals: Boolean) extends Module {
   // Activation Select register that drives io.actSel (set/reset logic is in FSM)
   val actSelReg = RegInit(false.B)  // Sigmoid is default
 
+  // States
+  val idle :: fetch :: decode :: execute :: Nil = Enum(numOfStates)
+  // State register
+  val stateReg = RegInit(idle)
+
   // Register RD/WR logic
   io.rdData := 0.U
   when (io.statusSel) {  // Control/status register: RD/WR
@@ -138,10 +153,10 @@ class Controller(testInternals: Boolean) extends Module {
       io.rdData := statusReg
     } .otherwise {
       val itFlag   = statusReg(itFl) && io.wrData(itFl)
-      val bits5to3 = Cat(io.wrData(acEn), itFlag, io.wrData(itEn))
+      val bits4to3 = Cat(itFlag, io.wrData(itEn))
       val queueEmpty = statusReg(qEmp) || io.wrData(qEmp)
-      val bits5to0 = Cat(bits5to3, queueEmpty, statusReg(busy), io.wrData(chEn))
-      statusReg := Cat(statusReg(erFl), 0.U(unusedBitsInStatus.W), bits5to0)
+      val bits4to0 = Cat(bits4to3, queueEmpty, statusReg(busy), io.wrData(chEn))
+      statusReg := Cat(statusReg(erFl), 0.U(unusedBitsInStatus.W), bits4to0)
 
       // When the programmer invalidates all registers by setting the queue-empty bit
       // then all error flags should be cleared
@@ -150,8 +165,9 @@ class Controller(testInternals: Boolean) extends Module {
       }
     }
   } .otherwise {  // Register update outside bus operations
-    // Refreshing queue-is-empty bit at every clock cycle other than bus reads/writes
-    statusReg := Cat(errorCause.orR, statusReg(busDataWidth-2, 3), !cmdValid.asUInt.orR, statusReg(1, 0))
+    // Refreshing queue-is-empty  and busy bits at every clock cycle other than bus reads/writes
+    statusReg := Cat(errorCause.orR, statusReg(busDataWidth-2, 3),
+      !cmdValid.asUInt.orR, (stateReg =/= idle), statusReg(0))
   }
   when (io.errCauseSel) {  // Error Cause register: RD (resettable by setting queue-empty bit of status reg.)
     when (io.rdWrN) {
@@ -233,22 +249,20 @@ class Controller(testInternals: Boolean) extends Module {
   // FSM to operate NNA
   // ------------------
 
-  // States
-  val idle :: fetch :: decode :: execute :: Nil = Enum(numOfStates)
-
-  // State register
-  val stateReg = RegInit(idle)
-
   // Command ("instruction") and operand registers (to be continued...)
   val currCommand = RegInit(0.U(busDataWidth.W))
   val dmaBusBaseAddr   = RegInit(0.U(busAddrWidth.W))
   val dmaBurstLen      = RegInit(0.U(localAddrWidth.W))
   val dmaMemSel = RegInit(true.B)
   val dmaStart  = RegInit(false.B)
-  val widthA  = RegInit(0.U(log2Up(gridSize+1).W))
-  val widthB  = RegInit(0.U(log2Up(gridSize+1).W))
-  val heightA = RegInit(0.U(log2Up(gridSize+1).W))
-  val heightB = RegInit(0.U(log2Up(gridSize+1).W))
+  val widthAReg  = RegInit(0.U(log2Up(gridSize+1).W))
+  val widthBReg  = RegInit(0.U(log2Up(gridSize+1).W))
+  val heightAReg = RegInit(0.U(log2Up(gridSize+1).W))
+  val heightBReg = RegInit(0.U(log2Up(gridSize+1).W))
+  val computeEnableReg = RegInit(false.B)
+  val mulConvNReg      = RegInit(false.B)
+  val loadedOpOne = RegInit(false.B)
+  val loadedOpTwo = RegInit(false.B)
 
   // Next state logic and related operations
   when (stateReg === idle) {
@@ -284,11 +298,12 @@ class Controller(testInternals: Boolean) extends Module {
           stateReg := idle
         }
         when (ldSValid(ldSPtr) && ldSValid(ldSPtr+1.U)) {
-          dmaBurstLen := loadSizeRF(ldSPtr)
           when (currCommand === LOAD_B.U) {
-            widthB := loadSizeRF(ldSPtr+1.U)
+            heightBReg := loadSizeRF(ldSPtr)
+            widthBReg  := loadSizeRF(ldSPtr+1.U)
           } .otherwise {  // LOAD_A or LOAD_K
-            widthA := loadSizeRF(ldSPtr+1.U)
+            heightAReg := loadSizeRF(ldSPtr)
+            widthAReg  := loadSizeRF(ldSPtr+1.U)
           }
         } .otherwise {
           setNoSize := true.B
@@ -303,6 +318,14 @@ class Controller(testInternals: Boolean) extends Module {
       } .elsewhen ((currCommand === SET_SIGM.U) || (currCommand === SET_RELU.U)) {
         stateReg := execute
         actSelReg := (currCommand === SET_RELU.U)
+      } .elsewhen ((currCommand === CONV_S.U) || (currCommand === MMUL_S.U)) {
+        when (loadedOpOne && loadedOpTwo) {
+          stateReg := execute
+          loadedOpOne := false.B
+          loadedOpTwo := false.B
+          computeEnableReg := true.B
+          mulConvNReg      := (currCommand === MMUL_S.U)
+        }
       } .otherwise {
         setUnknownCommand := true.B
         stateReg := idle
@@ -316,10 +339,30 @@ class Controller(testInternals: Boolean) extends Module {
       dmaStart := false.B
     } .elsewhen (!io.dma.done) {         // If a load operation is in progress
       stateReg := execute                // wait for it to end ("keep executing")
+    } .elsewhen (!io.computeDone) {      // If a computation is in progress
+      statusReg := execute               // wait for it to end ("keep executing")
     } .elsewhen (cmdValid.asUInt.orR) {  // If no outside operation is in progress
       stateReg := fetch                  // then fetch a new command
+      when (currCommand === LOAD_A.U || currCommand === LOAD_K.U) {
+        loadedOpOne := true.B
+      }
+      when (currCommand === LOAD_B.U) {
+        loadedOpTwo := true.B
+      }
+      when (currCommand === MMUL_S.U || currCommand === CONV_S.U) {
+        computeEnableReg := false.B
+      }
     } .otherwise {                       // If no valid command remained
       stateReg := idle                   // then go idle
+      when (currCommand === LOAD_A.U || currCommand === LOAD_K.U) {
+        loadedOpOne := true.B
+      }
+      when (currCommand === LOAD_B.U) {
+        loadedOpTwo := true.B
+      }
+      when (currCommand === MMUL_S.U || currCommand === CONV_S.U) {
+        computeEnableReg := false.B
+      }
     }
   } .otherwise {
     stateReg := idle
@@ -333,12 +376,19 @@ class Controller(testInternals: Boolean) extends Module {
   // Output driving from registers
   // - DMA
   io.dma.busBaseAddr := dmaBusBaseAddr
-  io.dma.burstLen    := dmaBurstLen
-  io.dma.rowLen      := Mux(currCommand === LOAD_B.U, widthB, widthA)
+  io.dma.ldHeight := Mux(currCommand === LOAD_B.U, heightBReg, heightAReg)
+  io.dma.ldWidth  := Mux(currCommand === LOAD_B.U, widthBReg, widthAReg)
   io.dma.sel   := dmaMemSel
   io.dma.start := dmaStart
   // - Activation Grid
   io.actSel := actSelReg
+  // - Load Unit
+  io.computeEnable := computeEnableReg
+  io.mulConvN      := mulConvNReg
+  io.widthA  := widthAReg
+  io.widthB  := widthBReg
+  io.heightA := heightAReg
+  io.heightB := heightBReg
 
   // Providing information about the internal
   // state of Controller for testing
