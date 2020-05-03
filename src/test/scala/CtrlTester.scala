@@ -9,7 +9,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   for ((k,v) <- regMap) println("[CtrlTester]  " + k + ": " + v)
 
   // Emulating inactive LoadUnit and DMA
-  poke(dut.io.computeDone, true.B)
+  poke(dut.io.ldunit.computeDone, true.B)
   poke(dut.io.dma.done, true.B)
 
   // Write-and-read-back tests
@@ -119,35 +119,35 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
 
   def writeAndReadBack_Status: Unit = {
     // Status register
-    poke(dut.io.statusSel, true.B)   // Important
-    poke(dut.io.addr, dut.STATUS.U)  // Optional
+    poke(dut.io.bus.statusSel, true.B)   // Important
+    poke(dut.io.bus.addr, dut.STATUS.U)  // Optional
     // - Write
     // Sent     Word: the 2 least significant bytes are set to 1 (except chip enable)
     // Received Word: only writable bits will change
     val sentWord = (1 << 16) - 2
     val recvWord = (1 << dut.qEmp) + (1 << dut.itEn)
-    poke(dut.io.wrData, sentWord.U)
-    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.bus.wrData, sentWord.U)
+    poke(dut.io.bus.rdWrN, false.B)
     expect(dut.io.statusReg, 0.U)
     step(1)
     expect(dut.io.statusReg, recvWord.U)
     // - Read back: expect success
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.rdWrN, true.B)
     step(1)
-    expect(dut.io.rdData, recvWord.U)
+    expect(dut.io.bus.rdData, recvWord.U)
     // Don't forget to deactivate register select after test
-    poke(dut.io.statusSel, false.B)
+    poke(dut.io.bus.statusSel, false.B)
   }
 
   def writeAndReadBack_CmdRegFile: Unit = {
     // Command register file and Command Valid register
-    poke(dut.io.commandSel, true.B) // Important
+    poke(dut.io.bus.commandSel, true.B) // Important
     // - Write
-    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.bus.rdWrN, false.B)
     var cmdValidRef = 0
     for (i <- 0 until 5) {
-      poke(dut.io.addr, (dut.CMD_RF_B + i).U) // Important
-      poke(dut.io.wrData, (42 + i).U)
+      poke(dut.io.bus.addr, (dut.CMD_RF_B + i).U) // Important
+      poke(dut.io.bus.wrData, (42 + i).U)
       expect(dut.io.commandRF(i), 0.U)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.cmdValid(bit), (cmdValidRef.U)(bit))
@@ -158,28 +158,28 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
         expect(dut.io.cmdValid(bit), (cmdValidRef.U)(bit))
     }
     // - Read back: expecting 0s because these registers are write-only
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.rdWrN, true.B)
     for (i <- 0 until 5) {
-      poke(dut.io.addr, (dut.CMD_RF_B + i).U)
+      poke(dut.io.bus.addr, (dut.CMD_RF_B + i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.cmdValid(bit), (cmdValidRef.U)(bit))  // Registers are still
       expect(dut.io.commandRF(i), (42 + i).U)               // holding their values
-      expect(dut.io.rdData, 0.U)                            // but rdData is 0
+      expect(dut.io.bus.rdData, 0.U)                            // but rdData is 0
     }
     // Don't forget to deactivate register select after test
-    poke(dut.io.commandSel, false.B)
+    poke(dut.io.bus.commandSel, false.B)
   }
 
   def writeAndReadBack_LoadAddrRegFile: Unit = {
     // Load Address register file and Load Address Valid register
-    poke(dut.io.ldAddrSel, true.B) // Important
+    poke(dut.io.bus.ldAddrSel, true.B) // Important
     // - Write
-    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.bus.rdWrN, false.B)
     var ldAddrValidRef = 0
     for (i <- 0 until 5) {
-      poke(dut.io.addr, (dut.LD_ADDR_B + i).U) // Important
-      poke(dut.io.wrData, (42 + i).U)
+      poke(dut.io.bus.addr, (dut.LD_ADDR_B + i).U) // Important
+      poke(dut.io.bus.wrData, (42 + i).U)
       expect(dut.io.loadAddrRF(i), 0.U)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldAValid(bit), (ldAddrValidRef.U)(bit))
@@ -190,28 +190,28 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
         expect(dut.io.ldAValid(bit), (ldAddrValidRef.U)(bit))
     }
     // - Read back: expecting 0s because these registers are write-only
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.rdWrN, true.B)
     for (i <- 0 until 5) {
-      poke(dut.io.addr, (dut.LD_ADDR_B + i).U)
+      poke(dut.io.bus.addr, (dut.LD_ADDR_B + i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldAValid(bit), (ldAddrValidRef.U)(bit))  // Registers are still
       expect(dut.io.loadAddrRF(i), (42 + i).U)                 // holding their values
-      expect(dut.io.rdData, 0.U)                               // but rdData is 0
+      expect(dut.io.bus.rdData, 0.U)                               // but rdData is 0
     }
     // Don't forget to deactivate register select after test
-    poke(dut.io.ldAddrSel, false.B)
+    poke(dut.io.bus.ldAddrSel, false.B)
   }
 
   def writeAndReadBack_LoadSizeRegFile: Unit = {
     // Load Size (burst length) register file and Load Size Valid register
-    poke(dut.io.ldSizeSel, true.B) // Important
+    poke(dut.io.bus.ldSizeSel, true.B) // Important
     // - Write
-    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.bus.rdWrN, false.B)
     var ldSizeValidRef = 0
     for (i <- 0 until 5) {
-      poke(dut.io.addr, (dut.LD_SIZE_B + i).U) // Important
-      poke(dut.io.wrData, (42 + i).U)
+      poke(dut.io.bus.addr, (dut.LD_SIZE_B + i).U) // Important
+      poke(dut.io.bus.wrData, (42 + i).U)
       expect(dut.io.loadSizeRF(i), 0.U)
       for (j <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(i), (ldSizeValidRef.U)(i))
@@ -222,17 +222,17 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
         expect(dut.io.ldSValid(bit), (ldSizeValidRef.U)(bit))
     }
     // - Read back: expecting 0s because these registers are write-only
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.rdWrN, true.B)
     for (i <- 0 until 5) {
-      poke(dut.io.addr, (dut.LD_SIZE_B + i).U)
+      poke(dut.io.bus.addr, (dut.LD_SIZE_B + i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (ldSizeValidRef.U)(bit))  // Registers are still
       expect(dut.io.loadSizeRF(i), (42 + i).U)                 // holding their values
-      expect(dut.io.rdData, 0.U)                               // but rdData is 0
+      expect(dut.io.bus.rdData, 0.U)                               // but rdData is 0
     }
     // Don't forget to deactivate register select after test
-    poke(dut.io.ldSizeSel, false.B)
+    poke(dut.io.bus.ldSizeSel, false.B)
   }
 
   // Common functions for FSM tests
@@ -242,12 +242,12 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     // Clearing all enable signals and flags
     // - resetWord: Everything is 0 except queue-empty bit which invalidates every command
     // val resetWord = (1 << dut.qEmp)
-    poke(dut.io.statusSel, true.B)
-    poke(dut.io.wrData, resetWord.U)
-    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.bus.statusSel, true.B)
+    poke(dut.io.bus.wrData, resetWord.U)
+    poke(dut.io.bus.rdWrN, false.B)
     step(1)
-    poke(dut.io.statusSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.statusSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
     step(1)                              // Reset needs two cycles to take full effect
     expect(dut.io.statusReg, resetWord)  // because of signal propagation (error flag in status)
   }
@@ -256,13 +256,13 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     // Starting FSM and inspecting it as it "processes" the commands
     // - startWord: Sets chip enable to start operations
     // val startWord = (1 << dut.chEn)
-    poke(dut.io.statusSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.wrData, startWord.U)
+    poke(dut.io.bus.statusSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.wrData, startWord.U)
     expect(dut.io.stateReg, dut.idle)     // FSM starts from idle state
     step(1)
-    poke(dut.io.statusSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.statusSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
   }
 
   // FSM test with dummy commands
@@ -271,10 +271,10 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   def writeDummyCommands: Unit = {
     // Writing commands
     // val dummyCmd = dut.DUMMY
-    poke(dut.io.commandSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.addr, 0.U)
-    poke(dut.io.wrData, dummyCmd.U)
+    poke(dut.io.bus.commandSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.addr, 0.U)
+    poke(dut.io.bus.wrData, dummyCmd.U)
     // - Before clock edge, everything remains in reset
     expect(dut.io.statusReg, resetWord)
     for (i <- 0 until dut.getDataW)
@@ -291,15 +291,15 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       expect(dut.io.cmdValid(i), (i==0))
     // - Writing 10 additional commands
     for (i <- 1 to 10) {
-      poke(dut.io.addr, i.U)
-      poke(dut.io.wrData, dummyCmd.U)
+      poke(dut.io.bus.addr, i.U)
+      poke(dut.io.bus.wrData, dummyCmd.U)
       step(1)
     }
     // - Expecting active valid bits for all of them (0 to 10)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i<=10))
-    poke(dut.io.commandSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.commandSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
   }
 
   def checkFSM_Dummy: Unit = {
@@ -341,10 +341,10 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
 
   def writeLoadCommands: Unit = {
     // Writing commands
-    poke(dut.io.commandSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.addr, 0.U)
-    poke(dut.io.wrData, loadACmd.U)
+    poke(dut.io.bus.commandSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.addr, 0.U)
+    poke(dut.io.bus.wrData, loadACmd.U)
     // - Before clock edge, everything remains in reset
     expect(dut.io.statusReg, resetWord)
     for (i <- 0 until dut.getDataW)
@@ -361,29 +361,29 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       expect(dut.io.cmdValid(i), (i==0))
     // - Writing additional load commands
     for (i <- 1 until 2*loadConfigs) {
-      poke(dut.io.addr, i.U)
+      poke(dut.io.bus.addr, i.U)
       val loadCmd = if (i%2 == 0) loadACmd else loadBCmd
-      poke(dut.io.wrData, loadCmd.U)
+      poke(dut.io.bus.wrData, loadCmd.U)
       step(1)
     }
     for (i <- 0 until loadConfigs) {
-      poke(dut.io.addr, (2*loadConfigs+i).U)
-      poke(dut.io.wrData, loadKCmd.U)
+      poke(dut.io.bus.addr, (2*loadConfigs+i).U)
+      poke(dut.io.bus.wrData, loadKCmd.U)
       step(1)
     }
     // - Expecting active valid bits for all of them
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i < 3*loadConfigs))
-    poke(dut.io.commandSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.commandSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
   }
 
   def writeBaseAddresses: Unit = {
     // Writing first address
-    poke(dut.io.ldAddrSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.addr, 0.U)
-    poke(dut.io.wrData, busBaseAddrA(0).U)
+    poke(dut.io.bus.ldAddrSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.addr, 0.U)
+    poke(dut.io.bus.wrData, busBaseAddrA(0).U)
     // - Before clock edge, everything remains in reset (invalid addresses)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(i), false)
@@ -394,57 +394,57 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     step(1)
     // - Writing the other addresses
     for (i <- 1 until 2*loadConfigs) {
-      poke(dut.io.addr, i.U)
+      poke(dut.io.bus.addr, i.U)
       val busBaseAddress = if (i%2 == 0) busBaseAddrA(i/2) else busBaseAddrB(i/2)
-      poke(dut.io.wrData, busBaseAddress.U)
+      poke(dut.io.bus.wrData, busBaseAddress.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldAValid(bit), (bit < (i+1)))
     }
     for (i <- 0 until loadConfigs) {
-      poke(dut.io.addr, (2*loadConfigs+i).U)
-      poke(dut.io.wrData, busBaseAddrK(i).U)
+      poke(dut.io.bus.addr, (2*loadConfigs+i).U)
+      poke(dut.io.bus.wrData, busBaseAddrK(i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldAValid(bit), (bit < 2*loadConfigs+i+1))
     }
-    poke(dut.io.ldAddrSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.ldAddrSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
   }
 
   def writeBurstSizes: Unit = {
     // Writing burst lengths
-    poke(dut.io.ldSizeSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.addr, 0.U)
+    poke(dut.io.bus.ldSizeSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.addr, 0.U)
     for (i <- 0 until 2*loadConfigs) {
-      poke(dut.io.addr, (2*i).U)
+      poke(dut.io.bus.addr, (2*i).U)
       val expHeight = if (i%2 == 0) heightA(i/2) else heightB(i/2)
-      poke(dut.io.wrData, expHeight.U)
+      poke(dut.io.bus.wrData, expHeight.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (bit < 2*i+1))
-      poke(dut.io.addr, (2*i+1).U)
+      poke(dut.io.bus.addr, (2*i+1).U)
       val expWidth = if (i%2 == 0) widthA(i/2) else widthB(i/2)
-      poke(dut.io.wrData, expWidth.U)
+      poke(dut.io.bus.wrData, expWidth.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (bit < 2*i+2))
     }
     for (i <- 0 until loadConfigs) {
-      poke(dut.io.addr, (2*2*loadConfigs+2*i).U)
-      poke(dut.io.wrData, sizeK(i).U)
+      poke(dut.io.bus.addr, (2*2*loadConfigs+2*i).U)
+      poke(dut.io.bus.wrData, sizeK(i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (bit < 2*2*loadConfigs+2*i+1))
-      poke(dut.io.addr, (2*2*loadConfigs+2*i+1).U)
-      poke(dut.io.wrData, sizeK(i).U)
+      poke(dut.io.bus.addr, (2*2*loadConfigs+2*i+1).U)
+      poke(dut.io.bus.wrData, sizeK(i).U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (bit < 2*2*loadConfigs+2*i+2))
     }
-    poke(dut.io.ldSizeSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.ldSizeSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
   }
 
   def checkFSM_Load: Unit = {
@@ -567,10 +567,10 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   // -----------------------
 
   def writeInvalidCommand: Unit = {
-    poke(dut.io.commandSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.addr, 0.U)
-    poke(dut.io.wrData, invalidCmd.U)
+    poke(dut.io.bus.commandSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.addr, 0.U)
+    poke(dut.io.bus.wrData, invalidCmd.U)
     // - Before clock edge, everything remains in reset
     expect(dut.io.statusReg, resetWord)
     for (i <- 0 until dut.getDataW)
@@ -585,8 +585,8 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.statusReg, 0.U)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i==0))
-    poke(dut.io.commandSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.commandSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
   }
 
   def checkFSM_invalidCmd: Unit = checkError(invalidCmd, dut.unknownCommand, expectQueueEmpty = true)
@@ -626,10 +626,10 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
 
   def writeActivationSelectCommands: Unit = {
     // Writing commands
-    poke(dut.io.commandSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.addr, 0.U)
-    poke(dut.io.wrData, dut.SET_RELU.U)
+    poke(dut.io.bus.commandSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.addr, 0.U)
+    poke(dut.io.bus.wrData, dut.SET_RELU.U)
     // - Before clock edge, everything remains in reset
     expect(dut.io.statusReg, resetWord)
     for (i <- 0 until dut.getDataW)
@@ -646,16 +646,16 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       expect(dut.io.cmdValid(i), (i==0))
     // - Writing additional commands
     for (i <- 1 until 4) {
-      poke(dut.io.addr, i.U)
+      poke(dut.io.bus.addr, i.U)
       val loadCmd = if (i%2 == 0) dut.SET_RELU else dut.SET_SIGM
-      poke(dut.io.wrData, loadCmd.U)
+      poke(dut.io.bus.wrData, loadCmd.U)
       step(1)
     }
     // - Expecting active valid bits for all of them
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i < 4))
-    poke(dut.io.commandSel, false.B)
-    poke(dut.io.rdWrN, true.B)
+    poke(dut.io.bus.commandSel, false.B)
+    poke(dut.io.bus.rdWrN, true.B)
   }
 
   def checkFSM_activationToggling: Unit = {
@@ -699,11 +699,11 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
   def writeRealSequence(cmd: Int): Unit = {
 
     // Writing first load command
-    poke(dut.io.commandSel, true.B)
-    poke(dut.io.rdWrN, false.B)
-    poke(dut.io.addr, 0.U)
+    poke(dut.io.bus.commandSel, true.B)
+    poke(dut.io.bus.rdWrN, false.B)
+    poke(dut.io.bus.addr, 0.U)
     val firstCmd = if (cmd == dut.MMUL_S) dut.LOAD_A else dut.LOAD_K
-    poke(dut.io.wrData, firstCmd.U)
+    poke(dut.io.bus.wrData, firstCmd.U)
     // - Before clock edge, everything remains in reset
     expect(dut.io.statusReg, resetWord)
     for (i <- 0 until dut.getDataW)
@@ -720,36 +720,36 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       expect(dut.io.cmdValid(i), (i==0))
 
     // Writing second load command
-    poke(dut.io.addr, 1.U)
-    poke(dut.io.wrData, dut.LOAD_B.U)
+    poke(dut.io.bus.addr, 1.U)
+    poke(dut.io.bus.wrData, dut.LOAD_B.U)
     step(1)
     expect(dut.io.statusReg, 0.U)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i < 2))
 
     // Writing matrix multiplication command
-    poke(dut.io.addr, 2.U)
-    poke(dut.io.wrData, cmd.U)
+    poke(dut.io.bus.addr, 2.U)
+    poke(dut.io.bus.wrData, cmd.U)
     step(1)
     expect(dut.io.statusReg, 0.U)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i < 3))
 
     // Writing store command
-    poke(dut.io.addr, 3.U)
-    poke(dut.io.wrData, dut.STORE.U)
+    poke(dut.io.bus.addr, 3.U)
+    poke(dut.io.bus.wrData, dut.STORE.U)
     step(1)
     expect(dut.io.statusReg, 0.U)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.cmdValid(i), (i < 4))
 
     // Switching from command RF to address RF
-    poke(dut.io.commandSel, false.B)
-    poke(dut.io.ldAddrSel, true.B)
+    poke(dut.io.bus.commandSel, false.B)
+    poke(dut.io.bus.ldAddrSel, true.B)
 
     // Writing first address for LOAD_[A/K]
-    poke(dut.io.addr, 0.U)
-    poke(dut.io.wrData, 42.U)
+    poke(dut.io.bus.addr, 0.U)
+    poke(dut.io.bus.wrData, 42.U)
     // - Before clock edge, everything remains in reset (invalid addresses)
     for (i <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(i), false)
@@ -759,41 +759,41 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
       expect(dut.io.ldAValid(i), (i==0))
     step(1)
     // Writing second address for LOAD_B
-    poke(dut.io.addr, 1.U)
-    poke(dut.io.wrData, 13.U)
+    poke(dut.io.bus.addr, 1.U)
+    poke(dut.io.bus.wrData, 13.U)
     step(1)
     for (bit <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(bit), (bit < 2))
     // Writing third address for STORE
-    poke(dut.io.addr, 2.U)
-    poke(dut.io.wrData, 99.U)
+    poke(dut.io.bus.addr, 2.U)
+    poke(dut.io.bus.wrData, 99.U)
     step(1)
     for (bit <- 0 until dut.getDataW)
       expect(dut.io.ldAValid(bit), (bit < 3))
 
     // Switching from address RF to size RF
-    poke(dut.io.ldAddrSel, false.B)
-    poke(dut.io.ldSizeSel, true.B)
+    poke(dut.io.bus.ldAddrSel, false.B)
+    poke(dut.io.bus.ldSizeSel, true.B)
 
     // Writing matrix sizes (test uses arrays defined for previous tests)
     for (i <- 0 until 2) {
-      poke(dut.io.addr, (2*i).U)
+      poke(dut.io.bus.addr, (2*i).U)
       val expHeight = if (i == 0) (if (cmd == dut.MMUL_S) heightA(0) else sizeK(0)) else heightB(0)
-      poke(dut.io.wrData, expHeight.U)
+      poke(dut.io.bus.wrData, expHeight.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (bit < 2*i+1))
-      poke(dut.io.addr, (2*i+1).U)
+      poke(dut.io.bus.addr, (2*i+1).U)
       val expWidth = if (i == 0) (if (cmd == dut.MMUL_S) widthA(0) else sizeK(0)) else widthB(0)
-      poke(dut.io.wrData, expWidth.U)
+      poke(dut.io.bus.wrData, expWidth.U)
       step(1)
       for (bit <- 0 until dut.getDataW)
         expect(dut.io.ldSValid(bit), (bit < 2*i+2))
     }
 
     // Turning off select and write signals
-    poke(dut.io.ldSizeSel, false.B)
-    poke(dut.io.rdWrN, false.B)
+    poke(dut.io.bus.ldSizeSel, false.B)
+    poke(dut.io.bus.rdWrN, false.B)
   }
 
   def checkFSMAndLoadInterface(cmd: Int): Unit = {
@@ -871,20 +871,20 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     expect(dut.io.stateReg, dut.execute)
     expect(dut.io.currCommand, cmd.U)
     // - LoadUnit interface is expected to be active
-    expect(dut.io.computeEnable, true.B)
-    expect(dut.io.mulConvN, (cmd == dut.MMUL_S))
-    expect(dut.io.heightA, expHeight)
-    expect(dut.io.widthA, expWidth)
-    expect(dut.io.heightB, heightB(0))
-    expect(dut.io.widthB, widthB(0))
-    poke(dut.io.computeDone, false.B)
+    expect(dut.io.ldunit.computeEnable, true.B)
+    expect(dut.io.ldunit.mulConvN, (cmd == dut.MMUL_S))
+    expect(dut.io.ldunit.heightA, expHeight)
+    expect(dut.io.ldunit.widthA, expWidth)
+    expect(dut.io.ldunit.heightB, heightB(0))
+    expect(dut.io.ldunit.widthB, widthB(0))
+    poke(dut.io.ldunit.computeDone, false.B)
     // - While computation is not done, FSM should wait in execute state
     for (_ <- 0 until 10) {
       step(1)
       expect(dut.io.stateReg, dut.execute)
-      expect(dut.io.computeEnable, true.B)
+      expect(dut.io.ldunit.computeEnable, true.B)
     }
-    poke(dut.io.computeDone, true.B)         // Emulating LoadUnit
+    poke(dut.io.ldunit.computeDone, true.B)         // Emulating LoadUnit
     step(1)
     expect(dut.io.stateReg, dut.fetch)
 
@@ -916,7 +916,7 @@ class CtrlTester(dut: Controller) extends PeekPokeTester(dut) {
     step(1)
 
     expect(dut.io.stateReg, dut.idle)
-    expect(dut.io.computeEnable, false.B)
+    expect(dut.io.ldunit.computeEnable, false.B)
     expStatus = (1 << dut.chEn) + (1 << dut.busy) + (1 << dut.qEmp)
     expect(dut.io.statusReg, expStatus)
     step(1)

@@ -141,15 +141,15 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
     poke(dut.io.ocpSlave.M.Addr, 0.U)
     poke(dut.io.ocpSlave.M.Data, 0.U)
     // - RD/WR interface for register files
-    expect(dut.io.addr, 0.U)
-    expect(dut.io.wrData, 0.U)
-    expect(dut.io.rdWrN, true.B)
+    expect(dut.io.ctrl.addr, 0.U)
+    expect(dut.io.ctrl.wrData, 0.U)
+    expect(dut.io.ctrl.rdWrN, true.B)
     // - Decoded block select signals from Bus Interface
-    expect(dut.io.statusSel, false.B)
-    expect(dut.io.errCauseSel, false.B)
-    expect(dut.io.commandSel, false.B)
-    expect(dut.io.ldAddrSel, false.B)
-    expect(dut.io.ldSizeSel, false.B)
+    expect(dut.io.ctrl.statusSel, false.B)
+    expect(dut.io.ctrl.errCauseSel, false.B)
+    expect(dut.io.ctrl.commandSel, false.B)
+    expect(dut.io.ctrl.ldAddrSel, false.B)
+    expect(dut.io.ctrl.ldSizeSel, false.B)
     step(1)
     expect(dut.io.ocpSlave.S.Resp, OcpResp.NULL)
     expect(dut.io.ocpSlave.S.Data, 0.U)
@@ -161,15 +161,15 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
     poke(dut.io.ocpSlave.M.Addr, regAddress.U)
     poke(dut.io.ocpSlave.M.Data, 42.U)
     // - RD/WR interface for register files
-    expect(dut.io.addr, offset)
-    expect(dut.io.wrData, 42.U)
-    expect(dut.io.rdWrN, false.B)
+    expect(dut.io.ctrl.addr, offset)
+    expect(dut.io.ctrl.wrData, 42.U)
+    expect(dut.io.ctrl.rdWrN, false.B)
     // - Decoded block select signals from Bus Interface
-    expect(dut.io.statusSel, (block == MAIN_BLOCK && offset == STATUS).B)
-    expect(dut.io.errCauseSel, (block == MAIN_BLOCK && offset == ERR_CAUSE).B)
-    expect(dut.io.commandSel, (block == CMD_BLOCK).B)
-    expect(dut.io.ldAddrSel, (block == LD_ADDR_BLOCK).B)
-    expect(dut.io.ldSizeSel, (block == LD_SIZE_BLOCK).B)
+    expect(dut.io.ctrl.statusSel, (block == MAIN_BLOCK && offset == STATUS).B)
+    expect(dut.io.ctrl.errCauseSel, (block == MAIN_BLOCK && offset == ERR_CAUSE).B)
+    expect(dut.io.ctrl.commandSel, (block == CMD_BLOCK).B)
+    expect(dut.io.ctrl.ldAddrSel, (block == LD_ADDR_BLOCK).B)
+    expect(dut.io.ctrl.ldSizeSel, (block == LD_SIZE_BLOCK).B)
     step(1)
     expect(dut.io.ocpSlave.S.Resp, OcpResp.DVA)
     expect(dut.io.ocpSlave.S.Data, 0.U)
@@ -181,20 +181,20 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
     poke(dut.io.ocpSlave.M.Addr, regAddress.U)
     poke(dut.io.ocpSlave.M.Data, 13.U)  // Ignored during read
     // - RD/WR interface for register files
-    expect(dut.io.addr, offset)
-    expect(dut.io.wrData, 0.U)  // Write data is ignored during read
-    expect(dut.io.rdWrN, true.B)
+    expect(dut.io.ctrl.addr, offset)
+    expect(dut.io.ctrl.wrData, 0.U)  // Write data is ignored during read
+    expect(dut.io.ctrl.rdWrN, true.B)
     // - Decoded block select signals from Bus Interface
-    expect(dut.io.statusSel, (block == MAIN_BLOCK && offset == STATUS).B)
-    expect(dut.io.errCauseSel, (block == MAIN_BLOCK && offset == ERR_CAUSE).B)
-    expect(dut.io.commandSel, (block == CMD_BLOCK).B)
-    expect(dut.io.ldAddrSel, (block == LD_ADDR_BLOCK).B)
-    expect(dut.io.ldSizeSel, (block == LD_SIZE_BLOCK).B)
+    expect(dut.io.ctrl.statusSel, (block == MAIN_BLOCK && offset == STATUS).B)
+    expect(dut.io.ctrl.errCauseSel, (block == MAIN_BLOCK && offset == ERR_CAUSE).B)
+    expect(dut.io.ctrl.commandSel, (block == CMD_BLOCK).B)
+    expect(dut.io.ctrl.ldAddrSel, (block == LD_ADDR_BLOCK).B)
+    expect(dut.io.ctrl.ldSizeSel, (block == LD_SIZE_BLOCK).B)
     // - Before clock edge and read emulation
     expect(dut.io.ocpSlave.S.Resp, OcpResp.NULL)
     expect(dut.io.ocpSlave.S.Data, 0.U)
     step(1)
-    poke(dut.io.rdData, 42.U)
+    poke(dut.io.ctrl.rdData, 42.U)
     // - After clock edge and read emulation
     expect(dut.io.ocpSlave.S.Resp, OcpResp.DVA)
     expect(dut.io.ocpSlave.S.Data, 42.U)
@@ -202,19 +202,19 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
 
   def idleDMAAndSlave: Unit = {
     // - DMA
-    poke(dut.io.busAddr, 0.U)
-    poke(dut.io.busBurstLen, 0.U)
-    poke(dut.io.busDataOut, 0.U)
-    poke(dut.io.dmaReady, false.B)
-    poke(dut.io.dmaValid, false.B)
+    poke(dut.io.dma.busAddr, 0.U)
+    poke(dut.io.dma.busBurstLen, 0.U)
+    poke(dut.io.dma.busDataOut, 0.U)
+    poke(dut.io.dma.dmaReady, false.B)
+    poke(dut.io.dma.dmaValid, false.B)
     // - OcpBurstMasterPort.S
     poke(dut.io.ocpMaster.S.Resp, OcpResp.NULL)
     poke(dut.io.ocpMaster.S.Data, 0.U)
     poke(dut.io.ocpMaster.S.CmdAccept, false.B)
     poke(dut.io.ocpMaster.S.DataAccept, false.B)
 
-    expect(dut.io.busReady, false.B)
-    expect(dut.io.busValid, false.B)
+    expect(dut.io.dma.busReady, false.B)
+    expect(dut.io.dma.busValid, false.B)
   }
 
   def expectIdleBus: Unit = {
@@ -227,11 +227,11 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
 
   def requestShortWrite: (Int, Int, Int) = {
     val shortBurstLen = 1 * burstLen
-    poke(dut.io.busAddr, 42.U)
-    poke(dut.io.busBurstLen, shortBurstLen.U)
-    poke(dut.io.busDataOut, 42.U)
-    poke(dut.io.dmaReady, false.B)
-    poke(dut.io.dmaValid, true.B)
+    poke(dut.io.dma.busAddr, 42.U)
+    poke(dut.io.dma.busBurstLen, shortBurstLen.U)
+    poke(dut.io.dma.busDataOut, 42.U)
+    poke(dut.io.dma.dmaReady, false.B)
+    poke(dut.io.dma.dmaValid, true.B)
     return (42, 42, shortBurstLen)
   }
 
@@ -256,14 +256,14 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
       poke(dut.io.ocpMaster.S.DataAccept, true.B)
 
       // DMA interface
-      expect(dut.io.busReady, (cycle != burstLen-1).B)
+      expect(dut.io.dma.busReady, (cycle != burstLen-1).B)
 
       // Emulating DMA
       expData += 1
       length = if (length > 0) length-1 else 0
-      poke(dut.io.busDataOut, expData.U)
-      poke(dut.io.dmaValid, (length != 0).B)
-      poke(dut.io.busBurstLen, length.U)
+      poke(dut.io.dma.busDataOut, expData.U)
+      poke(dut.io.dma.dmaValid, (length != 0).B)
+      poke(dut.io.dma.busBurstLen, length.U)
 
       step(1)
     }
@@ -272,17 +272,17 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
     expectIdleBus
 
     // DMA interface
-    expect(dut.io.busReady, false.B)
+    expect(dut.io.dma.busReady, false.B)
 
   }
 
   def requestLongWrite: (Int, Int, Int) = {
     val longBurstLen = 5 * burstLen
-    poke(dut.io.busAddr, 42.U)
-    poke(dut.io.busBurstLen, longBurstLen.U)
-    poke(dut.io.busDataOut, 42.U)
-    poke(dut.io.dmaReady, false.B)
-    poke(dut.io.dmaValid, true.B)
+    poke(dut.io.dma.busAddr, 42.U)
+    poke(dut.io.dma.busBurstLen, longBurstLen.U)
+    poke(dut.io.dma.busDataOut, 42.U)
+    poke(dut.io.dma.dmaReady, false.B)
+    poke(dut.io.dma.dmaValid, true.B)
     return (42, 42, longBurstLen)
   }
 
@@ -302,11 +302,11 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
 
   def requestShortRead: (Int, Int) = {
     val shortBurstLen = 1 * burstLen
-    poke(dut.io.busAddr, 42.U)
-    poke(dut.io.busBurstLen, shortBurstLen.U)
-    poke(dut.io.busDataOut, 0.U)
-    poke(dut.io.dmaReady, true.B)
-    poke(dut.io.dmaValid, false.B)
+    poke(dut.io.dma.busAddr, 42.U)
+    poke(dut.io.dma.busBurstLen, shortBurstLen.U)
+    poke(dut.io.dma.busDataOut, 0.U)
+    poke(dut.io.dma.dmaReady, true.B)
+    poke(dut.io.dma.dmaValid, false.B)
     return (42, shortBurstLen)
   }
 
@@ -338,15 +338,15 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
       }
 
       // DMA interface
-      expect(dut.io.busValid, (cycle > 1).B)
+      expect(dut.io.dma.busValid, (cycle > 1).B)
       val dmaData = if (cycle > 1) expData-1 else 0
-      expect(dut.io.busDataIn, dmaData)
+      expect(dut.io.dma.busDataIn, dmaData)
 
       // Emulating DMA
       if (cycle != 0) expData += 1
       length = if (length > 0) length-1 else 0
-      poke(dut.io.dmaReady, (length != 0).B)
-      poke(dut.io.busBurstLen, length.U)
+      poke(dut.io.dma.dmaReady, (length != 0).B)
+      poke(dut.io.dma.busBurstLen, length.U)
 
       step(1)
     }
@@ -360,11 +360,11 @@ class BusInterfaceTester(dut: BusInterface) extends PeekPokeTester(dut) {
 
   def requestLongRead: (Int, Int) = {
     val longBurstLen = 5 * burstLen
-    poke(dut.io.busAddr, 42.U)
-    poke(dut.io.busBurstLen, longBurstLen.U)
-    poke(dut.io.busDataOut, 0.U)
-    poke(dut.io.dmaReady, true.B)
-    poke(dut.io.dmaValid, false.B)
+    poke(dut.io.dma.busAddr, 42.U)
+    poke(dut.io.dma.busBurstLen, longBurstLen.U)
+    poke(dut.io.dma.busDataOut, 0.U)
+    poke(dut.io.dma.dmaReady, true.B)
+    poke(dut.io.dma.dmaValid, false.B)
     return (42, longBurstLen)
   }
 

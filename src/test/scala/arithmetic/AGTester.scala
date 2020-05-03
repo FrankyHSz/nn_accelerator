@@ -24,7 +24,8 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
   // expecting accumulated values after pipeline delay
   var accu = Array.fill(dut.getN) { 0 }
   poke(dut.io.clr, false.B)
-  poke(dut.io.en, true.B)
+  for (i <- 0 until gridSize)
+    poke(dut.io.en(i), true.B)
 
   // Loop for clock cycles
   for (t <- 0 until testLength+dut.getDelay) {
@@ -65,7 +66,8 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
   // expecting accumulated values after pipeline delay
   // Accumulators are cleared after every 128th input
   accu = Array.fill(dut.getN) { 0 }
-  poke(dut.io.en, true.B)
+  for (i <- 0 until gridSize)
+    poke(dut.io.en(i), true.B)
 
   // Loop for clock cycles
   for (t <- 0 until testLength+dut.getDelay) {
@@ -130,7 +132,8 @@ class AGTester(dut: ArithmeticGrid) extends PeekPokeTester(dut) {
     // Toggling enable after every 128 inputs
     if (t % 128 == 0) {
       enable = !enable
-      poke(dut.io.en, enable.B)
+      for (i <- 0 until gridSize)
+        poke(dut.io.en(i), enable.B)
     }
 
     // Loop for vector ports / units

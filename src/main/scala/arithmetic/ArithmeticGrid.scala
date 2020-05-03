@@ -6,7 +6,7 @@ class ArithmeticGrid extends Module {
   val io = IO(new Bundle() {
     val opA = Input(Vec(gridSize, baseType))
     val opB = Input(Vec(gridSize, baseType))
-    val en  = Input(Bool())
+    val en  = Input(Vec(gridSize, Bool()))
     val clr = Input(Bool())
     val mac = Output(Vec(gridSize, accuType))
     val vld = Output(Bool())
@@ -21,7 +21,7 @@ class ArithmeticGrid extends Module {
   for (i <- 0 until gridSize) {
     arithmeticUnits(i).a   := io.opA(i)
     arithmeticUnits(i).b   := io.opB(i)
-    arithmeticUnits(i).en  := io.en
+    arithmeticUnits(i).en  := io.en(i)
     arithmeticUnits(i).clr := io.clr
     io.mac(i) := arithmeticUnits(i).mac
   }

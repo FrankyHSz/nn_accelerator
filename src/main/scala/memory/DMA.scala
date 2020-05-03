@@ -13,7 +13,6 @@ class DMA extends Module {
       val busBurstLen = Output(UInt(busAddrWidth.W))
       val busDataIn = Input(UInt(busDataWidth.W))
       val busDataOut  = Output(UInt(busDataWidth.W))
-      val busRdWrN = Output(Bool())
       // Handshake signals: Bus -> DMA (read)
       val busValid = Input(Bool())
       val dmaReady = Output(Bool())
@@ -61,7 +60,7 @@ class DMA extends Module {
 
   // Control/handshake registers
   val selReg      = RegInit(true.B)
-  val rdWrReg     = RegInit(true.B)
+  val rdWrNReg    = RegInit(true.B)
   val doneReg     = RegInit(true.B)
   val wrReqReg    = RegInit(false.B)
   val dmaReadyReg = RegInit(false.B)
@@ -95,7 +94,7 @@ class DMA extends Module {
       columnCounter  := io.ctrl.ldWidth
       rowCounter     := io.ctrl.ldHeight
       selReg  := io.ctrl.sel
-      rdWrReg := io.ctrl.rdWrN
+      rdWrNReg := io.ctrl.rdWrN
       doneReg := false.B
     }
   } .elsewhen (stateReg === check) {
@@ -104,11 +103,11 @@ class DMA extends Module {
       doneReg := true.B
     } .otherwise {
       stateReg := request
-      dmaReadyReg := rdWrReg
-      dmaValidReg := !rdWrReg
+      dmaReadyReg := rdWrNReg
+      dmaValidReg := !rdWrNReg
     }
   } .elsewhen (stateReg === request) {
-    when (rdWrReg && busValidReg) {
+    when (rdWrNReg && busValidReg) {
       stateReg := read
       when (columnCounter > dmaChannels.U) {
         columnCounter := columnCounter - dmaChannels.U
@@ -119,7 +118,7 @@ class DMA extends Module {
       }
       burstLenReg := burstLenReg - 1.U
       io.wrEn := true.B
-    } .elsewhen (!rdWrReg && busReadyReg) {
+    } .elsewhen (!rdWrNReg && busReadyReg) {
       stateReg := write
       burstLenReg := burstLenReg - 1.U
       when (columnCounter > dmaChannels.U) {
@@ -199,7 +198,6 @@ class DMA extends Module {
   io.bus.busAddr     := busBaseAddrReg
   io.bus.busBurstLen := burstLenReg
   io.bus.dmaReady := dmaReadyReg
-  io.bus.busRdWrN := rdWrReg
   io.bus.dmaValid := dmaValidReg
 
   // DMA <-> Controller

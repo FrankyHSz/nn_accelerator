@@ -61,18 +61,20 @@ class Controller(testInternals: Boolean) extends Module {
 
   val io = IO(new Bundle {
 
-    // RD/WR interface for register files
-    val addr   = Input(UInt(blockAddrW.W))   // Decoded address (offset inside IP address space)
-    val wrData = Input(UInt(busDataWidth.W))
-    val rdData = Output(UInt(busDataWidth.W))
-    val rdWrN  = Input(Bool())
+    val bus = new Bundle {
+      // RD/WR interface for register files
+      val addr = Input(UInt(blockAddrW.W)) // Decoded address (offset inside IP address space)
+      val wrData = Input(UInt(busDataWidth.W))
+      val rdData = Output(UInt(busDataWidth.W))
+      val rdWrN = Input(Bool())
 
-    // Decoded block select signals from Bus Interface
-    val statusSel  = Input(Bool())
-    val errCauseSel = Input(Bool())
-    val commandSel = Input(Bool())
-    val ldAddrSel  = Input(Bool())
-    val ldSizeSel  = Input(Bool())
+      // Decoded block select signals from Bus Interface
+      val statusSel = Input(Bool())
+      val errCauseSel = Input(Bool())
+      val commandSel = Input(Bool())
+      val ldAddrSel = Input(Bool())
+      val ldSizeSel = Input(Bool())
+    }
 
     // DMA interface
     val dma = new Bundle() {
@@ -89,30 +91,32 @@ class Controller(testInternals: Boolean) extends Module {
     val actSel = Output(Bool())
 
     // Control signals for LoadUnit
-    val computeEnable = Output(Bool())
-    val computeDone   = Input(Bool())
-    val mulConvN      = Output(Bool())
-    val widthA  = Output(UInt(log2Up(gridSize+1).W))
-    val widthB  = Output(UInt(log2Up(gridSize+1).W))
-    val heightA = Output(UInt(log2Up(gridSize+1).W))
-    val heightB = Output(UInt(log2Up(gridSize+1).W))
+    val ldunit = new Bundle {
+      val computeEnable = Output(Bool())
+      val computeDone = Input(Bool())
+      val mulConvN = Output(Bool())
+      val widthA = Output(UInt(log2Up(gridSize + 1).W))
+      val widthB = Output(UInt(log2Up(gridSize + 1).W))
+      val heightA = Output(UInt(log2Up(gridSize + 1).W))
+      val heightB = Output(UInt(log2Up(gridSize + 1).W))
+    }
 
     // Test port
     // - Memory-mapped and internal registers
-    val statusReg  = if (testInternals) Output(UInt(busDataWidth.W)) else Output(UInt(0.W))
-    val errorCause = if (testInternals) Output(UInt(busDataWidth.W)) else Output(UInt(0.W))
-    val cmdValid   = if (testInternals) Output(Vec(busDataWidth, Bool())) else Output(Vec(0, Bool()))
-    val commandRF  = if (testInternals) Output(Vec(busDataWidth, UInt(busDataWidth.W))) else Output(Vec(0, UInt(0.W)))
-    val ldAValid   = if (testInternals) Output(Vec(busDataWidth, Bool())) else Output(Vec(0, Bool()))
-    val ldSValid   = if (testInternals) Output(Vec(busDataWidth, Bool())) else Output(Vec(0, Bool()))
-    val loadAddrRF = if (testInternals) Output(Vec(busDataWidth, UInt(busDataWidth.W))) else Output(Vec(0, UInt(0.W)))
-    val loadSizeRF = if (testInternals) Output(Vec(busDataWidth, UInt(busDataWidth.W))) else Output(Vec(0, UInt(0.W)))
+    val statusReg  = Output(UInt(busDataWidth.W))
+    val errorCause = Output(UInt(busDataWidth.W))
+    val cmdValid   = Output(Vec(busDataWidth, Bool()))
+    val commandRF  = Output(Vec(busDataWidth, UInt(busDataWidth.W)))
+    val ldAValid   = Output(Vec(busDataWidth, Bool()))
+    val ldSValid   = Output(Vec(busDataWidth, Bool()))
+    val loadAddrRF = Output(Vec(busDataWidth, UInt(busDataWidth.W)))
+    val loadSizeRF = Output(Vec(busDataWidth, UInt(busDataWidth.W)))
     // - Registers of state machine
-    val stateReg    = if (testInternals) Output(UInt(stateRegW.W)) else Output(UInt(0.W))
-    val cmdPtr      = if (testInternals) Output(UInt(blockAddrW.W)) else Output(UInt(0.W))
-    val ldAPtr      = if (testInternals) Output(UInt(blockAddrW.W)) else Output(UInt(0.W))
-    val ldSPtr      = if (testInternals) Output(UInt(blockAddrW.W)) else Output(UInt(0.W))
-    val currCommand = if (testInternals) Output(UInt(busDataWidth.W)) else Output(UInt(0.W))
+    val stateReg    = Output(UInt(stateRegW.W))
+    val cmdPtr      = Output(UInt(blockAddrW.W))
+    val ldAPtr      = Output(UInt(blockAddrW.W))
+    val ldSPtr      = Output(UInt(blockAddrW.W))
+    val currCommand = Output(UInt(busDataWidth.W))
   })
 
 
@@ -150,20 +154,20 @@ class Controller(testInternals: Boolean) extends Module {
   val stateReg = RegInit(idle)
 
   // Register RD/WR logic
-  io.rdData := 0.U
-  when (io.statusSel) {  // Control/status register: RD/WR
-    when (io.rdWrN) {
-      io.rdData := statusReg
+  io.bus.rdData := 0.U
+  when (io.bus.statusSel) {  // Control/status register: RD/WR
+    when (io.bus.rdWrN) {
+      io.bus.rdData := statusReg
     } .otherwise {
-      val itFlag   = statusReg(itFl) && io.wrData(itFl)
-      val bits4to3 = Cat(itFlag, io.wrData(itEn))
-      val queueEmpty = statusReg(qEmp) || io.wrData(qEmp)
-      val bits4to0 = Cat(bits4to3, queueEmpty, statusReg(busy), io.wrData(chEn))
+      val itFlag   = statusReg(itFl) && io.bus.wrData(itFl)
+      val bits4to3 = Cat(itFlag, io.bus.wrData(itEn))
+      val queueEmpty = statusReg(qEmp) || io.bus.wrData(qEmp)
+      val bits4to0 = Cat(bits4to3, queueEmpty, statusReg(busy), io.bus.wrData(chEn))
       statusReg := Cat(statusReg(erFl), 0.U(unusedBitsInStatus.W), bits4to0)
 
       // When the programmer invalidates all registers by setting the queue-empty bit
       // then all error flags should be cleared
-      when (io.wrData(qEmp)) {
+      when (io.bus.wrData(qEmp)) {
         errorCause := 0.U
       }
     }
@@ -172,26 +176,26 @@ class Controller(testInternals: Boolean) extends Module {
     statusReg := Cat(errorCause.orR, statusReg(busDataWidth-2, 3),
       !cmdValid.asUInt.orR, (stateReg =/= idle), statusReg(0))
   }
-  when (io.errCauseSel) {  // Error Cause register: RD (resettable by setting queue-empty bit of status reg.)
-    when (io.rdWrN) {
-      io.rdData := errorCause
+  when (io.bus.errCauseSel) {  // Error Cause register: RD (resettable by setting queue-empty bit of status reg.)
+    when (io.bus.rdWrN) {
+      io.bus.rdData := errorCause
     }
   } .otherwise {  // Register update outside bus operations
     errorCause := Cat(0.U(unusedBitsInErrorCause.W), setNoSize, setNoBaseAddress, setUnknownCommand)
   }
-  when(io.commandSel) {  // Command register file: WR
-    when(!io.rdWrN) {
-      commandRF(io.addr(blockAddrW - 1, 0)) := io.wrData
+  when(io.bus.commandSel) {  // Command register file: WR
+    when(!io.bus.rdWrN) {
+      commandRF(io.bus.addr(blockAddrW - 1, 0)) := io.bus.wrData
     }
   }
-  when(io.ldAddrSel) {   // Load Address register file: WR
-    when(!io.rdWrN) {
-      loadAddrRF(io.addr(blockAddrW - 1, 0)) := io.wrData
+  when(io.bus.ldAddrSel) {   // Load Address register file: WR
+    when(!io.bus.rdWrN) {
+      loadAddrRF(io.bus.addr(blockAddrW - 1, 0)) := io.bus.wrData
     }
   }
-  when(io.ldSizeSel) {   // Load Size register file: WR
-    when(!io.rdWrN) {
-      loadSizeRF(io.addr(blockAddrW - 1, 0)) := io.wrData
+  when(io.bus.ldSizeSel) {   // Load Size register file: WR
+    when(!io.bus.rdWrN) {
+      loadSizeRF(io.bus.addr(blockAddrW - 1, 0)) := io.bus.wrData
     }
   }
 
@@ -209,25 +213,25 @@ class Controller(testInternals: Boolean) extends Module {
   // - Writing a word makes that word valid
   // - Setting the queue-empty bit in statusReg makes every word invalid
   // - Reading a word makes that word invalid
-  when (io.commandSel && !io.rdWrN) {
-    cmdValid(io.addr(blockAddrW - 1, 0)) := true.B
-  } .elsewhen (io.statusSel && !io.rdWrN && io.wrData(qEmp)) {
+  when (io.bus.commandSel && !io.bus.rdWrN) {
+    cmdValid(io.bus.addr(blockAddrW - 1, 0)) := true.B
+  } .elsewhen (io.bus.statusSel && !io.bus.rdWrN && io.bus.wrData(qEmp)) {
     for (i <- 0 until busDataWidth)
       cmdValid(i) := false.B
   } .elsewhen (cmdRead) {
     cmdValid(cmdPtr) := false.B
   }
-  when (io.ldAddrSel && !io.rdWrN) {
-    ldAValid(io.addr(blockAddrW - 1, 0)) := true.B
-  } .elsewhen (io.statusSel && !io.rdWrN && io.wrData(qEmp)) {
+  when (io.bus.ldAddrSel && !io.bus.rdWrN) {
+    ldAValid(io.bus.addr(blockAddrW - 1, 0)) := true.B
+  } .elsewhen (io.bus.statusSel && !io.bus.rdWrN && io.bus.wrData(qEmp)) {
     for (i <- 0 until busDataWidth)
       ldAValid(i) := false.B
   } .elsewhen (loadRead) {
     ldAValid(ldAPtr) := false.B
   }
-  when (io.ldSizeSel && !io.rdWrN) {
-    ldSValid(io.addr(blockAddrW - 1, 0)) := true.B
-  } .elsewhen (io.statusSel && !io.rdWrN && io.wrData(qEmp)) {
+  when (io.bus.ldSizeSel && !io.bus.rdWrN) {
+    ldSValid(io.bus.addr(blockAddrW - 1, 0)) := true.B
+  } .elsewhen (io.bus.statusSel && !io.bus.rdWrN && io.bus.wrData(qEmp)) {
     for (i <- 0 until busDataWidth)
       ldSValid(i) := false.B
   } .elsewhen (loadRead) {
@@ -237,16 +241,15 @@ class Controller(testInternals: Boolean) extends Module {
 
   // Providing information about the internal
   // state of Controller for testing
-  if (testInternals) {
-    io.statusReg  := statusReg
-    io.errorCause := errorCause
-    io.cmdValid   := cmdValid
-    io.commandRF  := commandRF
-    io.ldAValid   := ldAValid
-    io.ldSValid   := ldSValid
-    io.loadAddrRF := loadAddrRF
-    io.loadSizeRF := loadSizeRF
-  }
+  io.statusReg  := statusReg
+  io.errorCause := errorCause
+  io.cmdValid   := cmdValid
+  io.commandRF  := commandRF
+  io.ldAValid   := ldAValid
+  io.ldSValid   := ldSValid
+  io.loadAddrRF := loadAddrRF
+  io.loadSizeRF := loadSizeRF
+
 
 
   // ------------------
@@ -361,7 +364,7 @@ class Controller(testInternals: Boolean) extends Module {
       dmaStart := false.B
     } .elsewhen (!io.dma.done) {         // If a load operation is in progress
       stateReg := execute                // wait for it to end ("keep executing")
-    } .elsewhen (!io.computeDone) {      // If a computation is in progress
+    } .elsewhen (!io.ldunit.computeDone) {      // If a computation is in progress
       statusReg := execute               // wait for it to end ("keep executing")
     } .elsewhen (cmdValid.asUInt.orR) {  // If no outside operation is in progress
       stateReg := fetch                  // then fetch a new command
@@ -412,22 +415,20 @@ class Controller(testInternals: Boolean) extends Module {
   // - Activation Grid
   io.actSel := actSelReg
   // - Load Unit
-  io.computeEnable := computeEnableReg
-  io.mulConvN      := mulConvNReg
-  io.widthA  := widthAReg
-  io.widthB  := widthBReg
-  io.heightA := heightAReg
-  io.heightB := heightBReg
+  io.ldunit.computeEnable := computeEnableReg
+  io.ldunit.mulConvN      := mulConvNReg
+  io.ldunit.widthA  := widthAReg
+  io.ldunit.widthB  := widthBReg
+  io.ldunit.heightA := heightAReg
+  io.ldunit.heightB := heightBReg
 
   // Providing information about the internal
   // state of Controller for testing
-  if (testInternals) {
-    io.stateReg    := stateReg
-    io.cmdPtr      := cmdPtr
-    io.ldAPtr      := ldAPtr
-    io.ldSPtr      := ldSPtr
-    io.currCommand := currCommand
-  }
+  io.stateReg    := stateReg
+  io.cmdPtr      := cmdPtr
+  io.ldAPtr      := ldAPtr
+  io.ldSPtr      := ldSPtr
+  io.currCommand := currCommand
 
 
   // Helper functions

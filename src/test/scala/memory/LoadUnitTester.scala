@@ -10,12 +10,12 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
 
   // Testing addresses for matrix multiplication
   println("[LoadUnit] Testing addresses for matrix multiplication")
-  poke(dut.io.en, true.B)
-  poke(dut.io.mulConvN, true.B)
-  poke(dut.io.widthA, n.U)
-  poke(dut.io.widthB, n.U)
-  poke(dut.io.heightA, n.U)
-  poke(dut.io.heightB, n.U)
+  poke(dut.io.ctrl.computeEnable, true.B)
+  poke(dut.io.ctrl.mulConvN, true.B)
+  poke(dut.io.ctrl.widthA, n.U)
+  poke(dut.io.ctrl.widthB, n.U)
+  poke(dut.io.ctrl.heightA, n.U)
+  poke(dut.io.ctrl.heightB, n.U)
   step(1)
   for (t <- 0 until maxAddress) {
     expect(dut.io.addrA, t % maxAddress)
@@ -27,14 +27,14 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
   }
   for (i <- 0 until n)
     expect(dut.io.auEn(i), false.B)
-  expect(dut.io.done, true.B)
+  expect(dut.io.ctrl.computeDone, true.B)
   step(1)
-  poke(dut.io.en, false.B)
+  poke(dut.io.ctrl.computeEnable, false.B)
   for (i <- 0 until n)
     expect(dut.io.auEn(i), false.B)
 
   // Resetting address registers
-  poke(dut.io.en, false.B)
+  poke(dut.io.ctrl.computeEnable, false.B)
   step(1)
 
   // Testing addresses for convolution
@@ -45,11 +45,11 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
   for (kernelSize <- 3 to 8) {
     var expB = -1
     print(kernelSize + " ")
-    poke(dut.io.en, true.B)
-    poke(dut.io.mulConvN, false.B)
-    poke(dut.io.widthA, kernelSize.U)
-    poke(dut.io.widthB, n.U)
-    poke(dut.io.heightB, n.U)
+    poke(dut.io.ctrl.computeEnable, true.B)
+    poke(dut.io.ctrl.mulConvN, false.B)
+    poke(dut.io.ctrl.widthA, kernelSize.U)
+    poke(dut.io.ctrl.widthB, n.U)
+    poke(dut.io.ctrl.heightB, n.U)
     step(1)
     for (t <- 0 until ((n-kernelSize+1) * (kernelSize*kernelSize))) {
 
@@ -84,14 +84,14 @@ class LoadUnitTester(dut: LoadUnit) extends PeekPokeTester(dut) {
     }
     for (i <- 0 until n)
       expect(dut.io.auEn(i), false.B)
-    expect(dut.io.done, true.B)
+    expect(dut.io.ctrl.computeDone, true.B)
     step(1)
-    poke(dut.io.en, false.B)
+    poke(dut.io.ctrl.computeEnable, false.B)
     for (i <- 0 until n)
       expect(dut.io.auEn(i), false.B)
 
     // Resetting address registers
-    poke(dut.io.en, false.B)
+    poke(dut.io.ctrl.computeEnable, false.B)
     step(1)
   }
   print("\n")
