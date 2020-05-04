@@ -83,6 +83,7 @@ class Controller(testInternals: Boolean) extends Module {
       val ldWidth  = Output(UInt(log2Up(gridSize+1).W))
       val rdWrN = Output(Bool())
       val sel   = Output(Bool())
+      val kernel = Output(Bool())
       val start = Output(Bool())
       val done  = Input(Bool())
     }
@@ -261,6 +262,7 @@ class Controller(testInternals: Boolean) extends Module {
   val dmaBusBaseAddr   = RegInit(0.U(busAddrWidth.W))
   val dmaBurstLen      = RegInit(0.U(localAddrWidth.W))
   val dmaMemSel = RegInit(true.B)
+  val kernelFlag = RegInit(false.B)
   val dmaRdWrN  = RegInit(true.B)
   val dmaStart  = RegInit(false.B)
   val widthAReg  = RegInit(0.U(log2Up(gridSize+1).W))
@@ -268,6 +270,7 @@ class Controller(testInternals: Boolean) extends Module {
   val heightAReg = RegInit(0.U(log2Up(gridSize+1).W))
   val heightBReg = RegInit(0.U(log2Up(gridSize+1).W))
   val computeEnableReg = RegInit(false.B)
+  val computeStart     = RegInit(false.B)
   val mulConvNReg      = RegInit(false.B)
   val loadedOpOne = RegInit(false.B)
   val loadedOpTwo = RegInit(false.B)
@@ -321,6 +324,7 @@ class Controller(testInternals: Boolean) extends Module {
         }
         // Providing control signals for DMA
         dmaMemSel := (currCommand === LOAD_A.U || currCommand === LOAD_K.U)
+        kernelFlag := (currCommand === LOAD_K.U)
         dmaStart  := ldAValid(ldAPtr) && ldSValid(ldSPtr) && ldSValid(ldSPtr+1.U)
         dmaRdWrN  := ldAValid(ldAPtr) && ldSValid(ldSPtr) && ldSValid(ldSPtr+1.U)
         // Updating read pointers
@@ -335,6 +339,7 @@ class Controller(testInternals: Boolean) extends Module {
           loadedOpOne := false.B
           loadedOpTwo := false.B
           computeEnableReg := true.B
+          computeStart := true.B
           mulConvNReg      := (currCommand === MMUL_S.U)
         }
       } .elsewhen (currCommand === STORE.U) {
@@ -364,6 +369,9 @@ class Controller(testInternals: Boolean) extends Module {
       dmaStart := false.B
     } .elsewhen (!io.dma.done) {         // If a load operation is in progress
       stateReg := execute                // wait for it to end ("keep executing")
+    } .elsewhen (computeStart) {
+      stateReg := execute
+      computeStart := false.B
     } .elsewhen (!io.ldunit.computeDone) {      // If a computation is in progress
       statusReg := execute               // wait for it to end ("keep executing")
     } .elsewhen (cmdValid.asUInt.orR) {  // If no outside operation is in progress
@@ -411,6 +419,7 @@ class Controller(testInternals: Boolean) extends Module {
   io.dma.ldWidth  := Mux(currCommand === LOAD_B.U, widthBReg, widthAReg)
   io.dma.rdWrN := dmaRdWrN
   io.dma.sel   := dmaMemSel
+  io.dma.kernel := kernelFlag
   io.dma.start := dmaStart
   // - Activation Grid
   io.actSel := actSelReg
@@ -440,4 +449,36 @@ class Controller(testInternals: Boolean) extends Module {
     "Load Size Register File Base Address"    -> LD_SIZE_B
   )
   def getDataW = busDataWidth
+}
+
+object Controller {
+  // Control/status register bits (indices) -- RD: readable, WR: writable, CL: cleanable, ST: settable
+  val chEn = 0  // Chip enable      : enables operation according to the command queue (RD/WR)
+  val busy = 1  // Busy flag        : signals that operations are under execution      (RD)
+  val qEmp = 2  // Queue is empty   : signals that no operation is specified           (RD/ST)
+  val itEn = 3  // Interrupt enable : enables generation of processor interrupts       (RD/WR)
+  val itFl = 4  // Interrupt flag   : signals processor interrupt (if enabled)         (RD/CL)
+  // ...
+  val erFl = busDataWidth-1  // Error flag: signals that an error occurred during the last operation (RD)
+  // Related
+  val unusedBitsInStatus = busDataWidth - 6
+
+  // Error Cause register bits (indices) -- The whole register is read-only
+  val unknownCommand = 0  // If a command (which is claimed to be valid in cmdValid reg.) is unrecognized.
+  val noBaseAddress  = 1  // If there was no corresponding base address found for a load command.
+  val noSize         = 2  // If there was no data size found for a load command.
+  // Related
+  val unusedBitsInErrorCause = busDataWidth - 3
+
+  // Supported commands
+  val DUMMY    = 42 // For testing only
+  val LOAD_K   = 1  // [000...001] Loads kernel into mem. A bank0. Needs base address and size of data to be specified.
+  val LOAD_A   = 3  // [000...011] Loads data into memory A. Needs base address and size of data to be specified.
+  val LOAD_B   = 2  // [000...010] Loads data into memory B. Needs base address and size of data to be specified.
+  val SET_SIGM = 4  // [00...0100] Sets activation to sigmoid. No further data required (N.f.d.r.).
+  val SET_RELU = 5  // [00...0101] Sets activation to ReLU. N.f.d.r.
+  val CONV_S   = 8  // [0...01000] Performs (single) convolution on previously loaded data. N.f.d.r.
+  val MMUL_S   = 9  // [0...01001] Performs (single) matrix multiplication on previously loaded data. N.f.d.r.
+  val STORE    = 16 // [0..010000] Stores the result of last operation from output memory to system memory. Needs a
+  //             base address in system memory to know where to save the data.
 }

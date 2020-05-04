@@ -137,7 +137,6 @@ class BusInterface extends Module {
   val stateReg = RegInit(idle)
 
   // Default values of combinatorial outputs
-  io.dma.busValid := false.B
   io.dma.busReady := false.B
 
   // Continue signal: if DMA request a longer burst
@@ -146,8 +145,6 @@ class BusInterface extends Module {
   // operation from the address in baseAddress register
   // or read a new address from the DMA
   val continue = RegInit(false.B)
-  // printf("Next base address is %d\n", nextBaseAddr)
-  // printf("Continue is %b\n", continue)
 
   // State machine
   when (stateReg === idle) {
@@ -172,6 +169,7 @@ class BusInterface extends Module {
         nextBaseAddr := io.dma.busAddr
       }
       burstDataReg := io.dma.busDataOut
+      io.dma.busReady := true.B
       byteEnReg    := 15.U
       dataValidReg := true.B
       when(io.dma.busBurstLen > burstLen.U) {
@@ -196,7 +194,7 @@ class BusInterface extends Module {
 
     } .otherwise {
       stateReg := idle
-      when (io.dma.busBurstLen =/= 0.U) {
+      when (io.dma.busBurstLen > 1.U) {
         continue := true.B
       } .otherwise {
         continue := false.B

@@ -19,7 +19,7 @@ package object arithmetic {
   // Config for modules in arithmetic package
   // ---------------------------------
   val accuWidth = 32
-  val gridSize = 256
+  val gridSize = 16
 
   // Derived from above
   type accuType_t = dataType_t

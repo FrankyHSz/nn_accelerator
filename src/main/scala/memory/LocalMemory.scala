@@ -48,14 +48,29 @@ class LocalMemory(banked: Boolean, flippedInterface: Boolean) extends Module {
       } else {
         memBanks(i).wrAddr := io.agAddr(localAddrWidth - 1, bankAddrWidth)
         memBanks(i).wrData := vectorConnect.io.out(numberOfBanks-1-i)
+//        when (io.agWrEn) {
+//          // printf("[LocalMEM] memBanks input vector:\n")
+//          printf("%d", vectorConnect.io.out(numberOfBanks-1-i))
+//          when (i.U === (numberOfBanks-1).U) {
+//            printf("\n")
+//          }
+//        }
       }
     } else {
       if (!banked) {
         memBanks(0).wrAddr := io.dmaAddr(0)(localAddrWidth - 1, 0)
-        memBanks(0).wrData := io.dmaData.asInstanceOf[Vec[UInt]](0)
+        memBanks(0).wrData := io.dmaData.asInstanceOf[Vec[SInt]](0)
       } else {
         memBanks(i).wrAddr := io.dmaAddr(i%dmaChannels)(localAddrWidth - 1, bankAddrWidth)
-        memBanks(i).wrData := io.dmaData.asInstanceOf[Vec[UInt]](i%dmaChannels)
+        memBanks(i).wrData := io.dmaData.asInstanceOf[Vec[SInt]](i%dmaChannels)
+//        when (i.U === 8.U && io.dmaData.asInstanceOf[Vec[SInt]](i%dmaChannels) === (-1).S) {
+//          printf("[LocalMem] WrAddr %d, data %d, this bank is selected %b, dmaWrEn %b\n",
+//            io.dmaAddr(i%dmaChannels)(localAddrWidth - 1, bankAddrWidth),
+//            io.dmaData.asInstanceOf[Vec[SInt]](i%dmaChannels),
+//            (io.dmaAddr(i%dmaChannels)(bankAddrWidth - 1, 0) === i.U),
+//            io.dmaWrEn
+//          )
+//        }
       }
     }
     if (!banked)
@@ -104,33 +119,39 @@ class LocalMemory(banked: Boolean, flippedInterface: Boolean) extends Module {
 
   if (!banked) {
     if (flippedInterface) {
-      io.dmaData.asInstanceOf[Vec[UInt]](0) := memBanks(0).rdData
-      io.dmaData.asInstanceOf[Vec[UInt]](1) := 0.S
-      io.dmaData.asInstanceOf[Vec[UInt]](2) := 0.S
-      io.dmaData.asInstanceOf[Vec[UInt]](3) := 0.S
+      io.dmaData.asInstanceOf[Vec[SInt]](0) := memBanks(0).rdData
+      io.dmaData.asInstanceOf[Vec[SInt]](1) := 0.S
+      io.dmaData.asInstanceOf[Vec[SInt]](2) := 0.S
+      io.dmaData.asInstanceOf[Vec[SInt]](3) := 0.S
     } else {
-      io.agData.asInstanceOf[Vec[UInt]](0) := memBanks(0).rdData
+      io.agData.asInstanceOf[Vec[SInt]](0) := memBanks(0).rdData
     }
     // Unused interconnect
     vectorConnect.io.in(0) := 0.S
     vectorConnect.io.sh    := 0.U
   } else {
     if (flippedInterface) {
-      vectorConnect.io.sh := io.agAddr
+      vectorConnect.io.sh := io.agAddr(bankAddrWidth - 1, 0)
       for (ch <- 0 until dmaChannels) {
+        // printf("[LocalMEM] DMA ch %d:\n", ch.U)
         // Building multiplexer-trees for each DMA port
         val selector = Wire(Vec(numberOfBanks/dmaChannels, Bool()))
         val dataVec  = Wire(Vec(numberOfBanks/dmaChannels, baseType))
         for (i <- 0 until numberOfBanks/dmaChannels) {
           selector(i) := (io.dmaAddr(ch)(bankAddrWidth-1, 0) === (i*dmaChannels + ch).U)
+          // printf("[LocalMEM] Ch: %d, Selector(%d) = %d == %d\n", ch.U, i.U, io.dmaAddr(ch)(bankAddrWidth-1, 0), (i*dmaChannels + ch).U)
           dataVec(i)  := memBanks(i*dmaChannels + ch).rdData
+//          when (selector(i)) {
+//            printf("[LocalMEM] Selector(%d) is %d\n", i.U, selector(i))
+//            printf("[LocalMEM] DataVec(%d) is %d\n", i.U, dataVec(i))
+//          }
         }
         val muxOut = util.Mux1H(selector, dataVec)
-        io.dmaData.asInstanceOf[Vec[UInt]](ch) := muxOut
+        io.dmaData.asInstanceOf[Vec[SInt]](ch) := muxOut
       }
     } else {
       // Connecting barrel shifter to module output
-      vectorConnect.io.sh := io.agAddr(bankAddrWidth - 1, 0)
+      vectorConnect.io.sh := RegNext(io.agAddr(bankAddrWidth - 1, 0))
       io.agData := vectorConnect.io.out
     }
   }

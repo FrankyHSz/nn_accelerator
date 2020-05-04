@@ -25,6 +25,11 @@ class ArithmeticGrid extends Module {
     arithmeticUnits(i).clr := io.clr
     io.mac(i) := arithmeticUnits(i).mac
   }
+//  when (io.en(4)) {
+//    printf("[AU(4)] Clear : %b, ", io.clr)
+//    printf("Inputs: %d * %d, ", io.opA(4), io.opB(4))
+//    printf("Current output: %d\n", io.mac(4))
+//  }
 
   // Signaling if accumulators are holding valid data
   // which is right before clearing them

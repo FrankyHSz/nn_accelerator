@@ -1,7 +1,7 @@
 package memory
 
 import chisel3._
-import chisel3.util.{Enum, log2Up}
+import chisel3.util.{Cat, Enum, log2Up}
 import _root_.arithmetic.{baseType, gridSize}
 
 class DMA extends Module {
@@ -28,6 +28,7 @@ class DMA extends Module {
       val ldWidth  = Input(UInt(log2Up(gridSize+1).W))
       val rdWrN = Input(Bool())
       val sel   = Input(Bool())
+      val kernel = Input(Bool())
       val start = Input(Bool())
       val done  = Output(Bool())
     }
@@ -68,6 +69,7 @@ class DMA extends Module {
   val busReadyReg = RegNext(io.bus.busReady)
   val dmaValidReg = RegInit(false.B)
 
+  val randomWrEnReg = RegInit(false.B)
 
   // Control FSM
   // -----------
@@ -85,14 +87,22 @@ class DMA extends Module {
   // Next state logic and (some of the) output driving
   io.wrEn := false.B  // Default value, see "read" state
   when (stateReg === init) {
+    when (randomWrEnReg) {
+      io.wrEn := true.B
+      randomWrEnReg := false.B
+    }
     when (io.ctrl.start) {
       stateReg := check
       localAddrReg   := 0.U
       busBaseAddrReg := io.ctrl.busBaseAddr
-      burstLenReg    := io.ctrl.ldWidth * io.ctrl.ldHeight >> (log2Up(dmaChannels))
-      rowLengthReg   := io.ctrl.ldWidth
-      columnCounter  := io.ctrl.ldWidth
-      rowCounter     := io.ctrl.ldHeight
+      when (io.ctrl.rdWrN) {
+        burstLenReg := io.ctrl.ldWidth * io.ctrl.ldHeight >> (log2Up(dmaChannels))
+      } .otherwise {
+        burstLenReg := (io.ctrl.ldWidth + dmaChannels.U) * io.ctrl.ldHeight >> (log2Up(dmaChannels))
+      }
+      rowLengthReg   := Mux(io.ctrl.kernel, io.ctrl.ldWidth * io.ctrl.ldHeight, io.ctrl.ldWidth)
+      columnCounter  := Mux(io.ctrl.kernel, io.ctrl.ldWidth * io.ctrl.ldHeight, io.ctrl.ldWidth)
+      rowCounter     := Mux(io.ctrl.kernel, 1.U, io.ctrl.ldHeight)
       selReg  := io.ctrl.sel
       rdWrNReg := io.ctrl.rdWrN
       doneReg := false.B
@@ -107,6 +117,7 @@ class DMA extends Module {
       dmaValidReg := !rdWrNReg
     }
   } .elsewhen (stateReg === request) {
+    dmaValidReg := !rdWrNReg
     when (rdWrNReg && busValidReg) {
       stateReg := read
       when (columnCounter > dmaChannels.U) {
@@ -118,7 +129,7 @@ class DMA extends Module {
       }
       burstLenReg := burstLenReg - 1.U
       io.wrEn := true.B
-    } .elsewhen (!rdWrNReg && busReadyReg) {
+    } .elsewhen (!rdWrNReg && io.bus.busReady) {
       stateReg := write
       burstLenReg := burstLenReg - 1.U
       when (columnCounter > dmaChannels.U) {
@@ -152,13 +163,17 @@ class DMA extends Module {
         rowLengthReg  := 0.U
         columnCounter := 0.U
         rowCounter    := 0.U
+        localAddrReg := localAddrReg + dmaChannels.U
         doneReg     := true.B
         dmaReadyReg := false.B
         io.wrEn := true.B
+        when (io.ctrl.kernel && burstLenReg === 1.U) {
+          randomWrEnReg := true.B
+        }
       }
     }
   } .elsewhen (stateReg === write) {
-    when (busReadyReg) {
+    when (io.bus.busReady) {
       when (burstLenReg > 1.U) {
         when (columnCounter > dmaChannels.U) {
           columnCounter := columnCounter - dmaChannels.U
@@ -183,7 +198,7 @@ class DMA extends Module {
         doneReg     := true.B
         dmaValidReg := false.B
         wrReqReg := false.B
-        io.wrEn := true.B
+        // io.wrEn := true.B
       }
     }
   }
@@ -211,9 +226,12 @@ class DMA extends Module {
 
     // Turning the 32-bit-aligned addressing into byte addresses
     io.addr(port) := localAddrReg + port.U
+    // printf("[DMA] Port %d has address %d\n", port.U, localAddrReg + port.U)
 
     // Splitting 4-byte data into bytes
     io.wrData(port) := busDataInReg(byteMsb(port), byteLsb(port)).asSInt()
+    // printf("[DMA] Port %d has data %d\n", port.U, busDataInReg(byteMsb(port), byteLsb(port)).asSInt())
+    // printf("[DMA] Port %d has data %d\n", port.U, io.rdData(port))
   }
   // Merging data bytes into one 4-byte word
   io.bus.busDataOut := io.rdData.asUInt()

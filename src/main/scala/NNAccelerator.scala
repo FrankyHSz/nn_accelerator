@@ -13,31 +13,6 @@ class NNAccelerator extends Module {
     // OCPcore master interface for the system memory and arbiter
     val ocpMasterPort = new OcpBurstMasterPort(busAddrWidth, busDataWidth, burstLen)
 
-    // Test interface
-    // - Bus emulation for DMA
-//    val bus = new Bundle() {
-//      val busAddr = Output(UInt(busAddrWidth.W))
-//      val busBurstLen = Output(UInt(localAddrWidth.W))
-//      val busDataIn = Input(UInt(busDataWidth.W))
-//      val busDataOut  = Output(UInt(busDataWidth.W))
-//      val busRdWrN = Output(Bool())
-//      val busValid = Input(Bool())
-//      val dmaReady = Output(Bool())
-//      val dmaValid = Output(Bool())
-//      val busReady = Input(Bool())
-//    }
-//    // - Controller emulation for DMA
-//    val ctrl = new Bundle() {
-//      val busBaseAddr = Input(UInt(busAddrWidth.W))
-//      val ldHeight = Input(UInt(log2Up(gridSize+1).W))
-//      val ldWidth  = Input(UInt(log2Up(gridSize+1).W))
-//      val rdWrN = Input(Bool())
-//      val sel   = Input(Bool())
-//      val start = Input(Bool())
-//      val done  = Output(Bool())
-//    }
-//    // - Controller emulation for Load Unit
-//    val ldEn = Input(Bool())
     // - Output checking
     val wrData = Output(Vec(dmaChannels, baseType))
     val mac  = Output(Vec(gridSize, accuType))
@@ -48,7 +23,7 @@ class NNAccelerator extends Module {
   val busInterface = Module(new BusInterface)
   val controller   = Module(new Controller(testInternals = false))
   val dma          = Module(new DMA)
-  val localMemoryA = Module(new LocalMemory(banked = false, flippedInterface = false))
+  val localMemoryA = Module(new LocalMemory(banked = true, flippedInterface = false))
   val localMemoryB = Module(new LocalMemory(banked = true, flippedInterface = false))
   val loadUnit     = Module(new LoadUnit)
   val computeUnit  = Module(new ArithmeticGrid)
@@ -95,8 +70,8 @@ class NNAccelerator extends Module {
   for (i <- 0 until gridSize)
     computeUnit.io.opA(i) := localMemoryA.io.agData.asInstanceOf[Vec[SInt]](0)  // Scalar input port
   computeUnit.io.opB := localMemoryB.io.agData                                  // Vector input port
-  computeUnit.io.en  := loadUnit.io.auEn
-  computeUnit.io.clr := loadUnit.io.auClr
+  computeUnit.io.en  := RegNext(loadUnit.io.auEn)
+  computeUnit.io.clr := RegNext(loadUnit.io.auClr)
 
   // Connecting outputs of ArithmeticGrid to ActivationGrid
   activation.io.in := computeUnit.io.mac
@@ -105,21 +80,37 @@ class NNAccelerator extends Module {
   // Outputting accumulator value for testing
   io.mac := computeUnit.io.mac
   io.vld := computeUnit.io.vld
+  when (io.vld) {
+    printf("[NNA] MAC vector is: ")
+    for (i <- 0 until gridSize)
+      printf("%d", io.mac(i))
+    printf("\n")
+  }
 
   // Register to store address for output memory
   // Write address for output memory is what was
   // the first address for input memory
-  val outWrAddrReg = RegInit(0.U(localAddrWidth.W))
+  val outWrAddrReg1 = RegInit(0.U(localAddrWidth.W))
+  val outWrAddrReg2 = RegInit(0.U(localAddrWidth.W))
   when (loadUnit.io.auClr) {
-    outWrAddrReg := loadUnit.io.addrA
+    outWrAddrReg1 := loadUnit.io.addrB
+    outWrAddrReg2 := outWrAddrReg1
   }
+  //outWrAddrReg := Mux(loadUnit.io.addrB === 0.U, loadUnit.io.saveAddr, loadUnit.io.addrB)
 
   // Connecting output of ActivationGrid to Output Memory
-  outputMemory.io.agAddr := outWrAddrReg
+  outputMemory.io.agAddr := outWrAddrReg2
   outputMemory.io.agData := activation.io.out
   outputMemory.io.agWrEn := RegNext(computeUnit.io.vld)
+//  when (RegNext(computeUnit.io.vld)) {
+//    printf("[NNA] OUT address is %d\n", outWrAddrReg2)
+//    printf("[NNA] OUT vector is: ")
+//    for (i <- 0 until gridSize)
+//      printf(" %d ", activation.io.out(i))
+//    printf("\n")
+//  }
   for (i <- 0 until dmaChannels) {
-    outputMemory.io.dmaAddr(i) := 0.U
+    outputMemory.io.dmaAddr(i) := dma.io.addr(i)
   }
 
 

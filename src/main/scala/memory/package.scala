@@ -8,8 +8,8 @@ package object memory {
   val busAddrWidth = addrWidth  // From OCP package object
   val busDataWidth = dataWidth  // From OCP package object
 
-  val localAddrWidth = 16
-  val bankAddrWidth  = 8  // Determines the number of banks, not their size
+  val localAddrWidth = 8
+  val bankAddrWidth  = 4  // Determines the number of banks, not their size
   val localDataWidth = 8
 
   // Derived from above
