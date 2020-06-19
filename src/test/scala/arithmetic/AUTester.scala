@@ -18,9 +18,15 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
   }
 
 
-  // Testing without clear
-  // ---------------------
-  println("[AUTester] Testing without clear")
+  // ---------
+  // MAC tests
+  // ---------
+  poke(dut.io.pooling, false.B)
+  poke(dut.io.maxPool, false.B)
+
+  // Testing MAC without clear
+  // -------------------------
+  println("[AUTester] Testing MAC without clear")
   // Feeding random values into the Arithmetic Unit and
   // expecting accumulated values after pipeline delay
   var accu = 0
@@ -45,9 +51,9 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
     step(1)
   }
 
-  // Testing with clear
-  // ------------------
-  println("[AUTester] Testing with clear")
+  // Testing MAC with clear
+  // ----------------------
+  println("[AUTester] Testing MAC with clear")
   // Feeding random values into the Arithmetic Unit and
   // expecting accumulated values after pipeline delay
   // Accumulator is cleared after every 128th input
@@ -80,9 +86,9 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
     step(1)
   }
 
-  // Testing with enable
-  // -------------------
-  println("[AUTester] Testing with enable")
+  // Testing MAC with enable
+  // -----------------------
+  println("[AUTester] Testing MAC with enable")
   // Feeding random values into the Arithmetic
   // Unit and expecting accumulated values after
   // 3 cycles of delay
@@ -123,5 +129,201 @@ class AUTester(dut: ArithmeticUnit) extends PeekPokeTester(dut) {
 
     // Stepping forward one clock cycle
     step(1)
+  }
+
+
+  // -------------
+  // Pooling tests
+  // -------------
+  val numOfPoolTests = 20  // Per pooling type, per pool size
+  poke(dut.io.en, true.B)
+  poke(dut.io.pooling, true.B)
+
+  // Testing max. pooling
+  // --------------------
+  println("[AUTester] Testing max. pooling")
+  // Presenting multiple pools of 4-9-16-25 elements
+  // and expecting the maximum value as output at the
+  // end of each pool.
+  // Clear pulses are used to separate pools.
+  // Enable is always active.
+  poke(dut.io.maxPool, true.B)  // Max./avg. pooling
+  poke(dut.io.b, 0.S)           // Unused input
+
+  var clear = false
+  var refOut = 0
+  for (poolSize <- Array(4, 9, 16, 25)) {
+    for (t <- 0 until numOfPoolTests*poolSize+dut.getDelay) {
+
+      // Sending a clear pulse
+      // alongside the first element of pool
+      clear = (t % poolSize) == 0
+      poke(dut.io.clr, clear.B)
+
+      // Driving input port with small pause
+      // between different pool sizes
+      if (t < numOfPoolTests*poolSize)
+        poke(dut.io.a, inputsA(t).S)
+
+      // Testing output
+      if (t >= dut.getDelay) {
+        val delayedInput = inputsA(t-dut.getDelay)
+        val delayedClear = (t-dut.getDelay) % poolSize == 0
+
+        // First element of pool will be temporally the max
+        // following elements will be temporal or true maxes
+        refOut = if (delayedClear || delayedInput > refOut) delayedInput else refOut
+        expect(dut.io.mac, refOut)
+      }
+
+      step(1)
+    }
+  }
+
+  // Testing average pooling
+  // -----------------------
+  println("[AUTester] Testing average pooling")
+  // Presenting multiple pools of 4-9-16-25 elements
+  // and expecting the summed value (unscaled average)
+  // as output at the end of each pool.
+  // Clear pulses are used to separate pools.
+  // Enable is always active.
+  poke(dut.io.maxPool, false.B)  // Max./avg. pooling
+  poke(dut.io.b, 0.S)            // Unused input
+
+  clear = false
+  refOut = 0
+  for (poolSize <- Array(4, 9, 16, 25)) {
+    for (t <- 0 until numOfPoolTests*poolSize+dut.getDelay) {
+
+      // Sending a clear pulse
+      // alongside the first element of pool
+      clear = (t % poolSize) == 0
+      poke(dut.io.clr, clear.B)
+
+      // Driving input port with small pause
+      // between different pool sizes
+      if (t < numOfPoolTests*poolSize)
+        poke(dut.io.a, inputsA(t).S)
+
+      // Testing output
+      if (t >= dut.getDelay) {
+        val delayedInput = inputsA(t-dut.getDelay)
+        val delayedClear = (t-dut.getDelay) % poolSize == 0
+
+        // First element of pool will be temporally the average
+        // following elements will be added to the unscaled avg.
+        refOut = if (delayedClear) delayedInput else refOut + delayedInput
+        expect(dut.io.mac, refOut)
+      }
+
+      step(1)
+    }
+  }
+
+  // Testing max. pooling with enable
+  // --------------------------------
+  println("[AUTester] Testing max. pooling with enable")
+  // Presenting multiple pools of 4-9-16-25 elements
+  // and expecting the maximum value as output at the
+  // end of each pool.
+  // Clear pulses are used to separate pools.
+  // Enable is toggled after every pool.
+  poke(dut.io.maxPool, true.B)  // Max./avg. pooling
+  poke(dut.io.b, 0.S)           // Unused input
+
+  enable = false
+  var delayedEnable = false
+  clear = false
+  refOut = 0
+  for (poolSize <- Array(4, 9, 16, 25)) {
+
+    enable = false
+    delayedEnable = false
+
+    for (t <- 0 until numOfPoolTests*poolSize+dut.getDelay) {
+
+      // Toggling enable at the beginning of every pool
+      if ((t % poolSize) == 0) enable = !enable
+      poke(dut.io.en, enable.B)
+
+      // Sending a clear pulse
+      // alongside the first element of pool
+      clear = (t % poolSize) == 0
+      poke(dut.io.clr, clear.B)
+
+      // Driving input port with small pause
+      // between different pool sizes
+      if (t < numOfPoolTests*poolSize)
+        poke(dut.io.a, inputsA(t).S)
+
+      // Testing output
+      if (t >= dut.getDelay) {
+        val delayedInput = inputsA(t-dut.getDelay)
+        val delayedClear = (t-dut.getDelay) % poolSize == 0
+        if (delayedClear) delayedEnable = !delayedEnable
+
+        // First element of pool will be temporally the max
+        // following elements will be temporal or true maxes
+        // if enable was active
+        if (delayedEnable)
+          refOut = if (delayedClear || delayedInput > refOut) delayedInput else refOut
+        expect(dut.io.mac, refOut)
+      }
+
+      step(1)
+    }
+  }
+
+  // Testing average pooling with enable
+  // -----------------------------------
+  println("[AUTester] Testing average pooling with enable")
+  // Presenting multiple pools of 4-9-16-25 elements
+  // and expecting the summed value (unscaled average)
+  // as output at the end of each pool.
+  // Clear pulses are used to separate pools.
+  // Enable is toggled at the beginning of every pool.
+  poke(dut.io.maxPool, false.B)  // Max./avg. pooling
+  poke(dut.io.b, 0.S)            // Unused input
+
+  clear = false
+  refOut = 0
+  for (poolSize <- Array(4, 9, 16, 25)) {
+
+    enable = false
+    delayedEnable = false
+
+    for (t <- 0 until numOfPoolTests*poolSize+dut.getDelay) {
+
+      // Toggling enable at the beginning of every pool
+      if ((t % poolSize) == 0) enable = !enable
+      poke(dut.io.en, enable.B)
+
+      // Sending a clear pulse
+      // alongside the first element of pool
+      clear = (t % poolSize) == 0
+      poke(dut.io.clr, clear.B)
+
+      // Driving input port with small pause
+      // between different pool sizes
+      if (t < numOfPoolTests*poolSize)
+        poke(dut.io.a, inputsA(t).S)
+
+      // Testing output
+      if (t >= dut.getDelay) {
+        val delayedInput = inputsA(t-dut.getDelay)
+        val delayedClear = (t-dut.getDelay) % poolSize == 0
+        if (delayedClear) delayedEnable = !delayedEnable
+
+        // First element of pool will be temporally the average
+        // following elements will be added to the unscaled avg.
+        // if enable was active
+        if (delayedEnable)
+          refOut = if (delayedClear) delayedInput else refOut + delayedInput
+        expect(dut.io.mac, refOut)
+      }
+
+      step(1)
+    }
   }
 }

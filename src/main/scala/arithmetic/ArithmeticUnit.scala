@@ -8,6 +8,8 @@ class ArithmeticUnit extends Module {
     val b   = Input(baseType)
     val en  = Input(Bool())
     val clr = Input(Bool())
+    val pooling = Input(Bool())
+    val maxPool = Input(Bool())
     val mac = Output(accuType)
   })
 
@@ -20,21 +22,27 @@ class ArithmeticUnit extends Module {
   // Delay lines for control signals
   val enDelay  = Reg(Vec(2, Bool()))
   val clrDelay = Reg(Vec(2, Bool()))
+  val maxPoolDelay = Reg(Vec(2, Bool()))
 
   // First stage
   aReg := io.a
   bReg := io.b
   enDelay(0) := io.en
   clrDelay(0) := io.clr
+  maxPoolDelay(0) := io.maxPool
 
   // Second stage
-  mul  := aReg * bReg
+  mul  := Mux(RegNext(io.pooling), aReg, aReg * bReg)
   enDelay(1) := enDelay(0)
   clrDelay(1) := clrDelay(0)
+  maxPoolDelay(1) := maxPoolDelay(0)
 
   // Third stage
+  val loopback = Mux(clrDelay(1), 0.S, accu)
+  val sum = loopback + mul
+  val max = Mux(clrDelay(1), mul, Mux(loopback < mul, mul, loopback))
   when (enDelay(1)) {
-    accu := Mux(clrDelay(1), mul, accu + mul)
+    accu := Mux(maxPoolDelay(1), max, sum)
   }
 
   io.mac := accu
