@@ -14,7 +14,7 @@ class NNAccelerator extends Module {
     val ocpMasterPort = new OcpBurstMasterPort(busAddrWidth, busDataWidth, burstLen)
 
     // - Output checking
-    val wrData = Output(Vec(dmaChannels, baseType))
+    val wrData = Output(Vec((1 << bankAddrWidth), baseType))
     val mac  = Output(Vec(gridSize, accuType))
     val vld = Output(Bool())
   })
@@ -23,12 +23,12 @@ class NNAccelerator extends Module {
   val busInterface = Module(new BusInterface)
   val controller   = Module(new Controller(testInternals = false))
   val dma          = Module(new DMA)
-  val localMemoryA = Module(new LocalMemory(banked = true, flippedInterface = false))
-  val localMemoryB = Module(new LocalMemory(banked = true, flippedInterface = false))
+  val localMemoryA = Module(new LocalMemory)
+  val localMemoryB = Module(new LocalMemory)
   val loadUnit     = Module(new LoadUnit)
   val computeUnit  = Module(new ArithmeticGrid)
   val activation   = Module(new ActivationGrid)
-  val outputMemory = Module(new LocalMemory(banked = true, flippedInterface = true))
+  val outputMemory = Module(new LocalMemory)
 
   // Connecting Bus Interface to OCP ports
   io.ocpSlavePort <> busInterface.io.ocpSlave
@@ -43,33 +43,33 @@ class NNAccelerator extends Module {
 
   // Connecting memories to DMA
   // Testing
-  io.wrData := dma.io.wrData
+//  io.wrData := dma.io.wrData
   // Memory A: DMA -> MemA -> AG
-  localMemoryA.io.dmaAddr := dma.io.addr
-  localMemoryA.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
-  localMemoryA.io.dmaWrEn := (dma.io.memSel && dma.io.wrEn)
-  localMemoryA.io.agWrEn := false.B
-  // Memory B: DMA -> MemB -> AG
-  localMemoryB.io.dmaAddr := dma.io.addr
-  localMemoryB.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
-  localMemoryB.io.dmaWrEn := (!dma.io.memSel && dma.io.wrEn)
-  localMemoryB.io.agWrEn := false.B
-  // Output memory: AG -> MemOut -> DMA
-  outputMemory.io.dmaAddr := dma.io.addr
-  dma.io.rdData := outputMemory.io.dmaData
-  outputMemory.io.dmaWrEn := false.B
+//  localMemoryA.io.dmaAddr := dma.io.addr
+//  localMemoryA.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
+//  localMemoryA.io.dmaWrEn := (dma.io.memSel && dma.io.wrEn)
+//  localMemoryA.io.agWrEn := false.B
+//  // Memory B: DMA -> MemB -> AG
+//  localMemoryB.io.dmaAddr := dma.io.addr
+//  localMemoryB.io.dmaData.asInstanceOf[Vec[UInt]] := dma.io.wrData
+//  localMemoryB.io.dmaWrEn := (!dma.io.memSel && dma.io.wrEn)
+//  localMemoryB.io.agWrEn := false.B
+//  // Output memory: AG -> MemOut -> DMA
+//  outputMemory.io.dmaAddr := dma.io.addr
+//  dma.io.rdData := outputMemory.io.dmaData
+//  outputMemory.io.dmaWrEn := false.B
 
   // Connecting Load Unit with Controller
   loadUnit.io.ctrl <> controller.io.ldunit
 
   // Local memory addressing
-  localMemoryA.io.agAddr := loadUnit.io.addrA
-  localMemoryB.io.agAddr := loadUnit.io.addrB
+//  localMemoryA.io.agAddr := loadUnit.io.addrA
+//  localMemoryB.io.agAddr := loadUnit.io.addrB
 
   // Connecting inputs of ArithmeticGrid
-  for (i <- 0 until gridSize)
-    computeUnit.io.opA(i) := localMemoryA.io.agData.asInstanceOf[Vec[SInt]](0)  // Scalar input port
-  computeUnit.io.opB := localMemoryB.io.agData                                  // Vector input port
+//  for (i <- 0 until gridSize)
+//    computeUnit.io.opA(i) := localMemoryA.io.agData.asInstanceOf[Vec[SInt]](0)  // Scalar input port
+//  computeUnit.io.opB := localMemoryB.io.agData                                  // Vector input port
   computeUnit.io.en  := RegNext(loadUnit.io.auEn)
   computeUnit.io.clr := RegNext(loadUnit.io.auClr)
 
@@ -99,9 +99,9 @@ class NNAccelerator extends Module {
   //outWrAddrReg := Mux(loadUnit.io.addrB === 0.U, loadUnit.io.saveAddr, loadUnit.io.addrB)
 
   // Connecting output of ActivationGrid to Output Memory
-  outputMemory.io.agAddr := outWrAddrReg2
-  outputMemory.io.agData := activation.io.out
-  outputMemory.io.agWrEn := RegNext(computeUnit.io.vld)
+//  outputMemory.io.agAddr := outWrAddrReg2
+//  outputMemory.io.agData := activation.io.out
+//  outputMemory.io.agWrEn := RegNext(computeUnit.io.vld)
 //  when (RegNext(computeUnit.io.vld)) {
 //    printf("[NNA] OUT address is %d\n", outWrAddrReg2)
 //    printf("[NNA] OUT vector is: ")
@@ -109,9 +109,9 @@ class NNAccelerator extends Module {
 //      printf(" %d ", activation.io.out(i))
 //    printf("\n")
 //  }
-  for (i <- 0 until dmaChannels) {
-    outputMemory.io.dmaAddr(i) := dma.io.addr(i)
-  }
+//  for (i <- 0 until dmaChannels) {
+//    outputMemory.io.dmaAddr(i) := dma.io.addr(i)
+//  }
 
 
   // Helper functions

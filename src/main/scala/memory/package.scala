@@ -11,8 +11,5 @@ package object memory {
   val localAddrWidth = 8
   val bankAddrWidth  = 4  // Determines the number of banks, not their size
   val localDataWidth = 8
-
-  // Derived from above
-  val dmaChannels = busDataWidth / localDataWidth
   // ---------------------------------
 }

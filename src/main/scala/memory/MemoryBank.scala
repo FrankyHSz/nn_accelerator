@@ -6,12 +6,12 @@ import _root_.arithmetic.baseType
 class MemoryBank extends Module {
   val io = IO(new Bundle() {
 
-    // Write port for DMA
+    // Write port
     val wrAddr = Input(UInt(bankAddrWidth.W))
     val wrData = Input(baseType)
     val wrEn = Input(Bool())
 
-    // Read port for Arithmetic Grid
+    // Read port
     val rdAddr = Input(UInt(bankAddrWidth.W))
     val rdData = Output(baseType)
   })

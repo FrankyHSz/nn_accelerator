@@ -8,6 +8,8 @@ class ArithmeticGrid extends Module {
     val opB = Input(Vec(gridSize, baseType))
     val en  = Input(Vec(gridSize, Bool()))
     val clr = Input(Bool())
+    val pooling = Input(Bool())
+    val maxPool = Input(Bool())
     val mac = Output(Vec(gridSize, accuType))
     val vld = Output(Bool())
   })
@@ -23,13 +25,10 @@ class ArithmeticGrid extends Module {
     arithmeticUnits(i).b   := io.opB(i)
     arithmeticUnits(i).en  := io.en(i)
     arithmeticUnits(i).clr := io.clr
+    arithmeticUnits(i).pooling := io.pooling
+    arithmeticUnits(i).maxPool := io.maxPool
     io.mac(i) := arithmeticUnits(i).mac
   }
-//  when (io.en(4)) {
-//    printf("[AU(4)] Clear : %b, ", io.clr)
-//    printf("Inputs: %d * %d, ", io.opA(4), io.opB(4))
-//    printf("Current output: %d\n", io.mac(4))
-//  }
 
   // Signaling if accumulators are holding valid data
   // which is right before clearing them

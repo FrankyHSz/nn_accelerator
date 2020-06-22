@@ -14,32 +14,7 @@ object MemoryTesterMain extends App {
   }
 
   if (testAll || args(0) == "testLocalMem") {
-
-    println("--------------------------------------------------------------------------")
-    println("Testing banked LocalMemory with non-flipped interface (DMA write, AG read)")
-    println("--------------------------------------------------------------------------")
-    iotesters.Driver.execute(args, () => new LocalMemory(banked = true, flippedInterface = false)) {
-      c => new LocalMemoryTester(c)
-    }
-
-    println("----------------------------------------------------------------------")
-    println("Testing banked LocalMemory with flipped interface (DMA read, AG write)")
-    println("----------------------------------------------------------------------")
-    iotesters.Driver.execute(args, () => new LocalMemory(banked = true, flippedInterface = true)) {
-      c => new LocalMemoryTester(c)
-    }
-
-    println("------------------------------------------------------------------------------")
-    println("Testing non-banked LocalMemory with non-flipped interface (DMA write, AG read)")
-    println("------------------------------------------------------------------------------")
-    iotesters.Driver.execute(args, () => new LocalMemory(banked = false, flippedInterface = false)) {
-      c => new LocalMemoryTester(c)
-    }
-
-    println("--------------------------------------------------------------------------")
-    println("Testing non-banked LocalMemory with flipped interface (DMA read, AG write)")
-    println("--------------------------------------------------------------------------")
-    iotesters.Driver.execute(args, () => new LocalMemory(banked = false, flippedInterface = true)) {
+    iotesters.Driver.execute(args, () => new LocalMemory) {
       c => new LocalMemoryTester(c)
     }
   }
